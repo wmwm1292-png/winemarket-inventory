@@ -369,6 +369,7 @@ const CATALOG = [
     {id:'sm',name:'소형'},{id:'md',name:'중형'},{id:'lg',name:'대형'},{id:'xl',name:'특대형'}
   ]},
   {id:'minicheese', name:'미니치즈', size:'-', icon:'🧀', bundleSystem:true, showMemo:true, memoPh:'유통기한 임박 날짜/개수', items:[]},
+  {id:'wineglass', name:'와인인어글라스', size:'-', icon:'🥂', looseOnly:true, levelLabels:['1/4','2/4','3/4','1박스'], items:[]},
   {id:'etc', name:'기타재고', size:'-', icon:'📦', looseOnly:true, items:[
     {id:'opener',name:'와인오프너'},
     {id:'fruitnet',name:'과일망'},
@@ -542,7 +543,8 @@ function renderLooseRow(cat,item){
   const isCustom=isCustomItem(cat,item.id);
   const dispName=getItemName(k,item);
   const looseLevel=getLooseLevel(k);
-  const looseBtns=LOOSE_LABELS.map((l,i)=>
+  const labels=cat.levelLabels||LOOSE_LABELS;
+  const looseBtns=labels.map((l,i)=>
     `<button class="loose-btn${looseLevel===i?' on':''}" data-action="loose" data-key="${k}" data-level="${i}">${l}</button>`
   ).join('');
   return `
