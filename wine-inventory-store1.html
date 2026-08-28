@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>와인샵 재고관리</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=DM+Sans:wght@400;500;600&family=DM+Mono&display=swap" rel="stylesheet">
+
+<!-- ★ Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --wine:#5C1F2E;--wine-h:#4A1825;
+  --gold:#A8832A;--gold-bg:rgba(168,131,42,.10);--gold-bd:rgba(168,131,42,.22);
+  --ink:#1A1210;--smoke:#7B6D69;--mist:#F5F1EB;--paper:#FFFFFF;
+  --border:#E0D8CF;--low:#BE3A30;--low-bg:#FFF6F5;
+  --r:10px;
+  --fn:'DM Sans',system-ui,sans-serif;
+  --fm:'DM Mono',ui-monospace,monospace;
+  --fd:'Playfair Display',Georgia,serif;
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --wine:#C47A8A;--wine-h:#D4899A;
+    --gold:#C9A84C;--gold-bg:rgba(201,168,76,.12);--gold-bd:rgba(201,168,76,.25);
+    --ink:#F0EAE3;--smoke:#A89890;--mist:#1E1512;--paper:#2A1F1B;
+    --border:#3D3028;--low:#E57373;--low-bg:#2D1515;
+  }
+}
+:root[data-theme="dark"]{
+  --wine:#C47A8A;--wine-h:#D4899A;
+  --gold:#C9A84C;--gold-bg:rgba(201,168,76,.12);--gold-bd:rgba(201,168,76,.25);
+  --ink:#F0EAE3;--smoke:#A89890;--mist:#1E1512;--paper:#2A1F1B;
+  --border:#3D3028;--low:#E57373;--low-bg:#2D1515;
+}
+body{font-family:var(--fn);background:var(--mist);color:var(--ink);min-height:100vh}
+button,input{font-family:var(--fn)}
+
+/* ── 연결 상태 배너 ── */
+.conn-bar{background:#2d7a2d;color:#fff;text-align:center;font:600 11px var(--fn);padding:5px;display:none}
+.conn-bar.on{display:block}
+.conn-bar.off{background:#BE3A30}
+
+/* ── Spinner ── */
+.spin-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999}
+.spin-ov.off{display:none}
+.spinner{width:38px;height:38px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Role modal ── */
+.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:200;padding:0 14px 20px}
+.modal-ov.off{display:none}
+.modal-card{background:var(--paper);border-radius:16px;padding:26px 20px 28px;max-width:420px;width:100%}
+.modal-title{font-family:var(--fd);font-size:20px;color:var(--ink);margin-bottom:6px}
+.modal-sub{font-size:13px;color:var(--smoke);line-height:1.6;margin-bottom:20px}
+.role-opt{display:block;width:100%;padding:14px 16px;border:1.5px solid var(--border);border-radius:10px;background:var(--paper);color:var(--ink);text-align:left;cursor:pointer;margin-bottom:10px;transition:border-color .15s,background .15s}
+.role-opt:last-child{margin-bottom:0}
+.role-opt:hover{border-color:var(--wine);background:var(--gold-bg)}
+.role-opt b{display:block;font:700 15px var(--fn);color:var(--wine);margin-bottom:2px}
+.role-opt small{font-size:12px;color:var(--smoke)}
+
+/* ── Header ── */
+.hdr{background:var(--wine);color:#fff;padding:14px 14px 0;position:sticky;top:0;z-index:100;box-shadow:0 2px 14px rgba(0,0,0,.2)}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:12px}
+.hdr-title{font-family:var(--fd);font-size:19px;letter-spacing:.3px}
+.hdr-sub{font-size:11px;color:rgba(255,255,255,.58);margin-top:2px}
+.hdr-r{display:flex;gap:6px;align-items:center}
+.btn-theme{background:rgba(255,255,255,.15);border:none;border-radius:7px;color:#fff;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.btn-theme:hover{background:rgba(255,255,255,.25)}
+.btn-save{background:var(--gold);color:#fff;border:none;border-radius:var(--r);padding:0 18px;height:36px;font:600 13px var(--fn);cursor:pointer;transition:background .15s;white-space:nowrap}
+.btn-save:hover{background:#8a6b22}
+.btn-save:disabled{opacity:.5;cursor:default}
+.role-bar{background:rgba(0,0,0,.14);padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.65)}
+.role-chip{background:rgba(255,255,255,.18);border-radius:20px;padding:3px 10px;font:600 11px var(--fn);color:#fff;cursor:pointer;transition:background .15s}
+.role-chip:hover{background:rgba(255,255,255,.28)}
+
+/* ── Main ── */
+.main{max-width:480px;margin:0 auto;padding:12px 10px 80px}
+
+/* ── Category card ── */
+.cat{background:var(--paper);border-radius:var(--r);border:1px solid var(--border);margin-bottom:10px;overflow:hidden}
+.cat-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none;transition:background .15s}
+.cat-hdr:hover{background:var(--gold-bg)}
+.cat-icon{width:38px;height:38px;border-radius:8px;background:var(--gold-bg);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.cat-info{flex:1;min-width:0}
+.cat-name{font:600 14px var(--fn);color:var(--ink);display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+.cat-nm-txt{cursor:pointer;border-radius:4px;padding:1px 4px;margin:-1px -4px;transition:background .15s}
+.cat-nm-txt:hover{background:rgba(255,255,255,.18)}
+.cat-nm-edit{background:rgba(255,255,255,.15);border:none;border-bottom:2px solid rgba(255,255,255,.7);color:#fff;font:600 14px var(--fn);width:120px;padding:1px 4px;outline:none;border-radius:0}
+.cat-meta{font:400 11px var(--fn);color:var(--smoke);margin-top:2px}
+.low-cnt{background:var(--low);color:#fff;border-radius:5px;padding:1px 6px;font:700 10px var(--fn)}
+.cat-chev{color:var(--smoke);transition:transform .22s;flex-shrink:0}
+.cat-chev.coll{transform:rotate(-90deg)}
+.cat-body{max-height:6000px;overflow:hidden;transition:max-height .32s ease}
+.cat-body.coll{max-height:0}
+
+/* ── Item row ── */
+.irow{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--border);min-height:58px}
+
+/* ── Photo box ── */
+.pb{width:44px;height:44px;border-radius:8px;border:1.5px dashed var(--border);background:var(--mist);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;transition:border-color .15s,background .15s,transform .12s}
+.pb:hover{border-color:var(--gold);border-style:solid;background:var(--gold-bg)}
+.pb img{width:100%;height:100%;object-fit:cover;border-radius:6px;display:block}
+.pb-ic{opacity:.32}
+.pb.drag-over{border-color:var(--gold);border-style:solid;background:var(--gold-bg);transform:scale(1.08);box-shadow:0 0 0 3px var(--gold-bd)}
+
+/* ── Item name ── */
+.nm-w{flex:1;min-width:0}
+.nm{font:500 13px var(--fn);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;border-radius:4px;padding:2px 4px;margin:-2px -4px;transition:background .12s,color .12s}
+.nm:hover{background:var(--gold-bg);color:var(--gold)}
+.nm-edit{width:100%;height:26px;border:none;border-bottom:1.5px solid var(--gold);border-radius:0;background:transparent;color:var(--ink);font:500 13px var(--fn);padding:0 2px;outline:none;display:block}
+/* ── Add category ── */
+.add-cat-wrap{padding:14px 14px 24px;text-align:center}
+.add-cat-btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:10px;border:1.5px dashed var(--border);background:transparent;color:var(--smoke);font:500 13px var(--fn);cursor:pointer;transition:all .15s}
+.add-cat-btn:hover{border-color:var(--wine);color:var(--wine);background:var(--gold-bg)}
+.cat-modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
+.cat-modal-ov.off{display:none}
+.cat-modal{background:var(--paper);border-radius:16px;padding:24px 20px;width:100%;max-width:400px}
+.cat-modal h3{font-family:var(--fd);font-size:18px;margin-bottom:16px;color:var(--ink)}
+.cat-modal label{display:block;font:500 12px var(--fn);color:var(--smoke);margin-bottom:4px;margin-top:12px}
+.cat-modal input{width:100%;height:40px;border:1.5px solid var(--border);border-radius:8px;background:var(--paper);color:var(--ink);font:400 14px var(--fn);padding:0 12px;outline:none}
+.cat-modal input:focus{border-color:var(--gold)}
+.cat-modal-btns{display:flex;gap:8px;margin-top:20px}
+.cat-modal-btns button{flex:1;height:40px;border-radius:8px;border:none;font:600 13px var(--fn);cursor:pointer}
+.cat-modal-cancel{background:var(--mist);color:var(--smoke)}
+.cat-modal-ok{background:var(--wine);color:#fff}
+.sz-lbl{font:400 11px var(--fn);color:var(--smoke);margin-top:2px}
+.sz-editable{cursor:pointer;border-radius:3px;padding:1px 3px;margin-left:-3px;transition:background .15s}
+.sz-editable:hover{background:var(--gold-bg);color:var(--gold)}
+.sz-ph{color:var(--border);font-style:italic}
+.sz-edit{width:80px;height:22px;border:none;border-bottom:1.5px solid var(--gold);border-radius:0;background:transparent;color:var(--ink);font:400 11px var(--fn);padding:0 2px;outline:none}
+
+/* ── Qty controls ── */
+.qc{display:flex;align-items:center;gap:3px;flex-shrink:0}
+.qb{width:30px;height:30px;border-radius:7px;border:1px solid var(--border);background:var(--mist);color:var(--ink);font:600 17px var(--fn);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .12s;line-height:1;flex-shrink:0}
+.qb:hover{background:var(--gold-bg);border-color:var(--gold)}
+.qb:active{background:var(--gold-bd)}
+.qi{width:46px;height:30px;border:1px solid var(--border);border-radius:7px;background:var(--paper);color:var(--ink);font:600 14px var(--fm);text-align:center;padding:0;-moz-appearance:textfield}
+.qi::-webkit-outer-spin-button,.qi::-webkit-inner-spin-button{-webkit-appearance:none}
+.qi:focus{outline:none;border-color:var(--gold)}
+.qi.low-v{color:var(--low);border-color:var(--low)}
+
+/* ── Delete btn / spacer ── */
+.xb{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--smoke);font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
+.xb:hover{background:var(--low-bg);border-color:var(--low);color:var(--low)}
+.xb-ph{width:24px;flex-shrink:0}
+
+/* ── Add area ── */
+.add-btn{display:flex;align-items:center;gap:6px;width:100%;padding:10px 14px;border:none;background:transparent;color:var(--smoke);font:500 12px var(--fn);cursor:pointer;transition:color .15s;border-top:1px solid var(--border)}
+.add-btn:hover{color:var(--gold)}
+.add-form{display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-top:1px solid var(--border)}
+.add-inp{width:100%;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--paper);color:var(--ink);font:400 13px var(--fn);padding:0 10px}
+.add-inp:focus{outline:none;border-color:var(--gold)}
+.add-inp::placeholder{color:var(--smoke)}
+.add-row2{display:flex;align-items:center;gap:6px}
+.add-sz{flex:1;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--paper);color:var(--ink);font:400 13px var(--fn);padding:0 10px}
+.add-sz:focus{outline:none;border-color:var(--gold)}
+.add-sz::placeholder{color:var(--smoke)}
+.add-ok{height:36px;padding:0 14px;border-radius:8px;border:none;background:var(--wine);color:#fff;font:600 12px var(--fn);cursor:pointer;flex-shrink:0;transition:background .12s}
+.add-ok:hover{background:var(--wine-h)}
+.add-no{height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--smoke);font:400 12px var(--fn);cursor:pointer;flex-shrink:0}
+.add-no:hover{background:var(--mist)}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(26,18,16,.92);color:#fff;border-radius:10px;padding:10px 22px;font:500 13px var(--fn);z-index:500;opacity:0;pointer-events:none;transition:opacity .28s;white-space:nowrap}
+.toast.on{opacity:1}
+
+/* ── 실시간 업데이트 알림 ── */
+.live-dot{width:7px;height:7px;border-radius:50%;background:#4caf50;display:inline-block;margin-right:5px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── 수량 입력 모달 ── */
+.qm-ov{position:fixed;inset:0;background:rgba(0,0,0,.52);display:flex;align-items:flex-end;justify-content:center;z-index:300;padding:0 14px 28px}
+.qm-ov.off{display:none}
+.qm{background:var(--paper);border-radius:20px;padding:22px 20px 24px;max-width:420px;width:100%}
+.qm-name{font:500 12px var(--fn);color:var(--smoke);text-align:center;margin-bottom:14px;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qm-row{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:18px}
+.qm-btn{width:54px;height:54px;border-radius:13px;border:1.5px solid var(--border);background:var(--mist);color:var(--ink);font:500 26px var(--fn);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .12s;flex-shrink:0;user-select:none}
+.qm-btn:active{background:var(--gold-bg);border-color:var(--gold);transform:scale(.94)}
+.qm-inp{width:138px;height:70px;border:2.5px solid var(--gold);border-radius:14px;background:var(--paper);color:var(--ink);font:700 32px var(--fm);text-align:center;-moz-appearance:textfield;outline:none;transition:border-color .15s}
+.qm-inp:focus{border-color:var(--wine)}
+.qm-inp::-webkit-outer-spin-button,.qm-inp::-webkit-inner-spin-button{-webkit-appearance:none}
+.qm-ok{width:100%;height:50px;border-radius:13px;border:none;background:var(--wine);color:#fff;font:600 15px var(--fn);cursor:pointer;transition:background .15s}
+.qm-ok:hover{background:var(--wine-h)}
+.qi{cursor:pointer}
+
+/* ── 아이템 컨텍스트 메뉴 (길게 누르기) ── */
+.im-ov{position:fixed;inset:0;background:rgba(0,0,0,.52);display:flex;align-items:flex-end;justify-content:center;z-index:310;padding:0 14px 28px}
+.im-ov.off{display:none}
+.im{background:var(--paper);border-radius:20px;padding:20px 16px 16px;max-width:420px;width:100%}
+.im-title{font:600 14px var(--fn);color:var(--ink);text-align:center;margin-bottom:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px}
+.im-btn{display:flex;align-items:center;gap:10px;width:100%;padding:14px 16px;border:none;background:transparent;color:var(--ink);font:500 14px var(--fn);cursor:pointer;border-radius:10px;transition:background .12s;text-align:left}
+.im-btn:hover,.im-btn:active{background:var(--mist)}
+.im-del{color:var(--low)}
+.im-sep{height:1px;background:var(--border);margin:4px 0}
+.im-cancel{display:block;width:100%;padding:14px;border:1.5px solid var(--border);border-radius:12px;background:transparent;color:var(--smoke);font:500 14px var(--fn);cursor:pointer;margin-top:10px;transition:background .12s}
+.im-cancel:hover{background:var(--mist)}
+.irow{-webkit-user-select:none;user-select:none}
+
+/* ── 묶음/낱개 행 ── */
+.bd-row{display:flex;align-items:flex-start;gap:10px;padding:10px 14px 12px;border-top:1px solid var(--border);-webkit-user-select:none;user-select:none}
+.bd-nm-w{flex:1;min-width:0}
+.bd-nm-w .nm{margin-bottom:10px}
+.bd-section{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.bd-label{font:500 11px var(--fn);color:var(--smoke);width:30px;flex-shrink:0}
+.bd-qc{display:flex;align-items:center;gap:4px}
+.bd-num{font:700 15px var(--fm);color:var(--ink);min-width:28px;text-align:center}
+.bd-mul{font:400 11px var(--fn);color:var(--smoke);margin-left:2px}
+.loose-wrap{display:flex;gap:4px;flex-wrap:wrap}
+.loose-btn{height:28px;padding:0 9px;border-radius:7px;border:1.5px solid var(--border);background:transparent;color:var(--smoke);font:500 11px var(--fn);cursor:pointer;transition:all .12s;white-space:nowrap}
+.loose-btn.on{background:var(--wine);border-color:var(--wine);color:#fff}
+.bd-total{font:600 12px var(--fn);color:var(--gold);margin-bottom:8px}
+.bd-memo{width:100%;height:32px;border:1px solid var(--border);border-radius:7px;background:var(--paper);color:var(--ink);font:400 12px var(--fn);padding:0 10px;outline:none;transition:border-color .15s}
+.bd-memo:focus{border-color:var(--gold)}
+.bd-memo::placeholder{color:var(--smoke);font-style:italic}
+</style>
+</head>
+<body>
+
+<!-- Spinner -->
+<div id="spinOv" class="spin-ov"><div class="spinner"></div></div>
+
+<!-- 연결 상태 -->
+<div id="connBar" class="conn-bar"></div>
+
+<!-- Role modal -->
+<div id="roleModal" class="modal-ov off">
+  <div class="modal-card">
+    <div class="modal-title">안녕하세요 👋</div>
+    <div class="modal-sub">역할을 선택해주세요.<br>모든 역할에서 재고 수정 및 저장이 가능해요.</div>
+    <button class="role-opt" data-role="사장님"><b>사장님</b><small>재고 조회 및 전체 관리</small></button>
+    <button class="role-opt" data-role="직원"><b>직원</b><small>재고 수량 입력 및 저장</small></button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Header -->
+<header class="hdr">
+  <div class="hdr-top">
+    <div>
+      <div class="hdr-title">🍷 와인샵 재고</div>
+      <div id="updInfo" class="hdr-sub">연결 중…</div>
+    </div>
+    <div class="hdr-r">
+      <button class="btn-theme" onclick="toggleTheme()" title="테마 변경">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="12" cy="12" r="5"/>
+          <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      </button>
+      <button class="btn-save" id="saveBtn" onclick="doSave()">저장</button>
+    </div>
+  </div>
+  <div class="role-bar">
+    <span><span class="live-dot"></span>실시간 연동</span>
+    <span style="margin-left:auto">역할:</span>
+    <span class="role-chip" id="roleChip" onclick="openRoleModal()">미설정</span>
+  </div>
+</header>
+
+<!-- 카테고리 추가 모달 -->
+<div id="catModal" class="cat-modal-ov off">
+  <div class="cat-modal">
+    <h3>새 카테고리 추가</h3>
+    <label>이모지 아이콘</label>
+    <input id="catEmoji" placeholder="예: 🎀 🛍️ 💐 📦" maxlength="4">
+    <label>카테고리 이름</label>
+    <input id="catName" placeholder="예: 새틴리본" maxlength="20">
+    <label>기본 크기 (없으면 비워두세요)</label>
+    <input id="catSize" placeholder="예: 10mm" maxlength="12" inputmode="decimal">
+    <div class="cat-modal-btns">
+      <button class="cat-modal-cancel" id="catCancel">취소</button>
+      <button class="cat-modal-ok" id="catOk">추가</button>
+    </div>
+  </div>
+</div>
+
+<!-- 아이템 메뉴 (길게 누르기) -->
+<div id="itemMenu" class="im-ov off">
+  <div class="im">
+    <div id="itemMenuTitle" class="im-title"></div>
+    <div class="im-sep"></div>
+    <button class="im-btn" id="itemMenuRename">✏️&nbsp; 이름 수정</button>
+    <button class="im-btn im-del" id="itemMenuDel">🗑&nbsp; 삭제</button>
+    <button class="im-cancel" id="itemMenuCancel">취소</button>
+  </div>
+</div>
+
+<!-- 수량 입력 모달 -->
+<div id="qtyMod" class="qm-ov off">
+  <div class="qm">
+    <div id="qtyModName" class="qm-name"></div>
+    <div class="qm-row">
+      <button class="qm-btn" id="qtyModMinus">&#8722;</button>
+      <input class="qm-inp" id="qtyModInp" type="number" inputmode="decimal" step="0.1" min="0" max="9999">
+      <button class="qm-btn" id="qtyModPlus">+</button>
+    </div>
+    <button class="qm-ok" id="qtyModOk">확인</button>
+  </div>
+</div>
+
+<!-- Main -->
+<main class="main" id="mc"></main>
+
+<!-- Hidden photo input -->
+<input type="file" id="photoInput" accept="image/*" style="display:none">
+
+<script>
+'use strict';
+
+/* ★★★ Firebase 설정 — 아래 값을 본인 Firebase 프로젝트 설정으로 교체하세요 ★★★ */
+const firebaseConfig = {
+  apiKey:            "AIzaSyCr3RzEpKjtoWh493R4casHDr3AfSYu4x0",
+  authDomain:        "wineshop-inventory.firebaseapp.com",
+  databaseURL:       "https://wineshop-inventory-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "wineshop-inventory",
+  storageBucket:     "wineshop-inventory.firebasestorage.app",
+  messagingSenderId: "250505393650",
+  appId:             "1:250505393650:web:3f8cc19c2b2a5be2be276b"
+};
+/* ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */
+
+firebase.initializeApp(firebaseConfig);
+const DB = firebase.database().ref('wineShop');
+
+/* ═══════════════════════════
+   CATALOG
+═══════════════════════════ */
+const CATALOG = [
+  {id:'pearl', name:'펄오간디', size:'15mm', icon:'🎀', items:[
+    {id:'OC2',name:'OC2'},{id:'OC4',name:'OC4'},{id:'OC5',name:'OC5'},
+    {id:'OC7',name:'OC7'},{id:'OC9',name:'OC9'},{id:'OC10',name:'OC10'},
+    {id:'OC12',name:'OC12'},{id:'OC13',name:'OC13'},{id:'OC14',name:'OC14'},
+    {id:'OC16',name:'OC16'},{id:'OC18',name:'OC18'},{id:'OC19',name:'OC19'},
+    {id:'OC20',name:'OC20'}
+  ]},
+  {id:'yangdan', name:'양단오간디', size:'40mm', icon:'🎀', items:[
+    {id:'OB7',name:'OB7'},{id:'OB10',name:'OB10'},{id:'OB12',name:'OB12'},{id:'OB4',name:'OB4'}
+  ]},
+  {id:'hd25', name:'고밀도주자', size:'25mm', icon:'🎀', items:[
+    {id:'b25',name:'베이지'},{id:'h25',name:'회청색'}
+  ]},
+  {id:'hd5', name:'고밀도주자', size:'5mm', icon:'🎀', items:[
+    {id:'b5',name:'베이지'},{id:'h5',name:'회청색'},{id:'p5',name:'포도'},
+    {id:'c67',name:'C67'},{id:'m5',name:'밤색'}
+  ]},
+  {id:'g10', name:'골직', size:'10mm', icon:'🎀', items:[
+    {id:'b8',name:'8베이지'},{id:'b18',name:'18밤색'}
+  ]},
+  {id:'g5', name:'골직', size:'5mm', icon:'🎀', items:[
+    {id:'i0',name:'36빨강'},{id:'i1',name:'26남색'},{id:'i2',name:'3백아이'},
+    {id:'i3',name:'18밤색'},{id:'i4',name:'1검정'},{id:'i5',name:'7노랑'},
+    {id:'i6',name:'12초록'},{id:'i7',name:'56벽돌'},{id:'i8',name:'11연두'},
+    {id:'i9',name:'37주황'},{id:'i10',name:'35작색'},{id:'i11',name:'32연분홍'},
+    {id:'i12',name:'13청록'},{id:'i13',name:'6연노랑'},{id:'i14',name:'22은색'},
+    {id:'i15',name:'39벚꽃'},{id:'i16',name:'27보라'},{id:'i17',name:'28진보라'},
+    {id:'i18',name:'24물색'},{id:'i19',name:'14진카키'},{id:'i20',name:'31꽃분홍'},
+    {id:'i21',name:'25로얄블루'},{id:'i22',name:'16수박색'},{id:'i23',name:'20연하늘'},
+    {id:'i24',name:'43인디핑크'},{id:'i25',name:'8베이지'},{id:'i26',name:'9연밤'}
+  ]},
+  {id:'bag', name:'쇼핑백', size:'-', icon:'🛍️', bundleSize:50, showMemo:true, items:[
+    {id:'sm',name:'소형'},{id:'md',name:'중형'},{id:'lg',name:'대형'},{id:'xl',name:'특대형'}
+  ]},
+  {id:'minicheese', name:'미니치즈', size:'-', icon:'🧀', bundleSystem:true, items:[]},
+  {id:'flower', name:'조화', size:'-', icon:'💐', items:[
+    {id:'f1',name:'소형'},{id:'f2',name:'중형'},{id:'f3',name:'대형'}
+  ]}
+];
+
+/* ═══════════════════════════
+   STATE
+═══════════════════════════ */
+let state = {
+  inventory: {}, customItems: {}, photos: {}, customNames: {}, sizes: {},
+  customCats: [],
+  bundles: {}, loose: {}, memos: {},
+  lastUpdated: null, updatedBy: ''
+};
+let isFirstLoad = true;
+
+/* ═══════════════════════════
+   MODULE VARS
+═══════════════════════════ */
+let me = '';
+let addingCat = null;
+let pendingPhotoKey = null;
+
+/* ═══════════════════════════
+   HELPERS
+═══════════════════════════ */
+function ikey(catId, itemId){ return catId+'_'+itemId; }
+function getQty(k){ const v=state.inventory[k]; return (v==null)?0:+v; }
+function setQty(k,v){ state.inventory[k]=Math.round(Math.max(0,Math.min(9999,parseFloat(v)||0))*10)/10; }
+function fmtQty(v){ return v%1===0?String(v):v.toFixed(1); }
+function getPhoto(k){ return (state.photos||{})[k]||null; }
+function getItemName(k,item){ const cn=state.customNames&&state.customNames[k]; return(cn!=null&&cn!=='')?cn:item.name; }
+function getCatName(cat){ const cn=(state.customNames||{})['__cat__'+cat.id]; return(cn!=null&&cn!=='')?cn:cat.name; }
+function getItemSize(k,item){ const sv=state.sizes&&state.sizes[k]; return(sv!=null&&sv!=='')?sv:(item.size||''); }
+function autoMm(v){ v=v.trim(); if(!v) return ''; if(/^[\d.]+$/.test(v)) return v+'mm'; return v; }
+function allItems(cat){ return [...(cat.items||[]),...(state.customItems[cat.id]||[])]; }
+function isCustomItem(cat,itemId){ return (state.customItems[cat.id]||[]).some(x=>x.id===itemId); }
+function isColl(catId){ try{ const v=localStorage.getItem('wsc2_'+catId); return v===null?true:v==='1'; }catch(e){return true;} }
+function saveColl(catId,v){ try{localStorage.setItem('wsc2_'+catId,v?'1':'0');}catch(e){} }
+function lowCount(cat){ return allItems(cat).filter(it=>getQty(ikey(cat.id,it.id))<5).length; }
+
+/* ── 묶음/낱개 helpers ── */
+const LOOSE_LABELS=['없음','조금','반쯤','꽤있음','거의가득'];
+const LOOSE_QTY=[0,10,25,35,45];
+function getBundles(k){ return +((state.bundles||{})[k]||0); }
+function getLooseLevel(k){ return +((state.loose||{})[k]||0); }
+function getMemo(k){ return (state.memos||{})[k]||''; }
+function setBundles(k,v){ state.bundles=state.bundles||{}; state.bundles[k]=Math.max(0,Math.round((+v||0)*2)/2); }
+function fmtBundles(v){ return v%1===0?String(v):v.toFixed(1); }
+function setLooseLevel(k,v){ state.loose=state.loose||{}; state.loose[k]=Math.max(0,Math.min(4,+v||0)); }
+function setMemo(k,v){ state.memos=state.memos||{}; state.memos[k]=String(v||''); }
+function bagTotal(k,bundleSize){ return getBundles(k)*bundleSize+LOOSE_QTY[getLooseLevel(k)]; }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ═══════════════════════════
+   THEME
+═══════════════════════════ */
+function applyTheme(){
+  const t=localStorage.getItem('ws_th')||'';
+  if(t) document.documentElement.setAttribute('data-theme',t);
+  else document.documentElement.removeAttribute('data-theme');
+}
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'';
+  const nxt=cur==='dark'?'light':cur==='light'?'':'dark';
+  if(nxt) localStorage.setItem('ws_th',nxt); else localStorage.removeItem('ws_th');
+  applyTheme();
+}
+
+/* ═══════════════════════════
+   ROLE
+═══════════════════════════ */
+function loadRole(){
+  try{me=localStorage.getItem('ws_role')||'';}catch(e){}
+  document.getElementById('roleChip').textContent=me||'미설정';
+}
+function openRoleModal(){ document.getElementById('roleModal').classList.remove('off'); }
+function closeRoleModal(){ document.getElementById('roleModal').classList.add('off'); }
+function setRole(role){
+  me=role;
+  try{localStorage.setItem('ws_role',role);}catch(e){}
+  document.getElementById('roleChip').textContent=role;
+  closeRoleModal();
+}
+document.getElementById('roleModal').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-role]');
+  if(btn){setRole(btn.dataset.role);return;}
+  if(e.target===document.getElementById('roleModal')) closeRoleModal();
+});
+
+/* ═══════════════════════════
+   TOAST
+═══════════════════════════ */
+let _tt;
+function showToast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(_tt);
+  _tt=setTimeout(()=>el.classList.remove('on'),2800);
+}
+
+/* ═══════════════════════════
+   UPDATED INFO
+═══════════════════════════ */
+function renderInfo(){
+  const el=document.getElementById('updInfo');
+  if(!state.lastUpdated){el.textContent='아직 저장된 기록이 없어요';return;}
+  const d=new Date(state.lastUpdated);
+  const p=n=>String(n).padStart(2,'0');
+  const s=`${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  el.textContent=`최종 저장: ${s}${state.updatedBy?' · '+state.updatedBy:''}`;
+}
+
+/* ═══════════════════════════
+   SVGs
+═══════════════════════════ */
+const CAM_SVG=`<svg class="pb-ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+const PLUS_SVG=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+
+/* ═══════════════════════════
+   RENDER
+═══════════════════════════ */
+function renderBundleRow(cat,item){
+  const k=ikey(cat.id,item.id);
+  const ph=getPhoto(k);
+  const isCustom=isCustomItem(cat,item.id);
+  const dispName=getItemName(k,item);
+  const bundles=getBundles(k);
+  const looseLevel=getLooseLevel(k);
+  const memo=getMemo(k);
+  const hasBundleSize=!!cat.bundleSize;
+  const total=hasBundleSize?bagTotal(k,cat.bundleSize):null;
+  const showMemo=cat.showMemo===true;
+  const looseBtns=LOOSE_LABELS.map((l,i)=>
+    `<button class="loose-btn${looseLevel===i?' on':''}" data-action="loose" data-key="${k}" data-level="${i}">${l}</button>`
+  ).join('');
+  return `
+<div class="bd-row" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${isCustom?'1':'0'}">
+  <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
+    ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
+  </div>
+  <div class="bd-nm-w">
+    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}</div>
+    <div class="bd-section">
+      <span class="bd-label">묶음</span>
+      <div class="bd-qc">
+        <button class="qb" data-action="bundle-minus" data-key="${k}">&#8722;</button>
+        <span class="bd-num" id="bdNum_${k}">${fmtBundles(bundles)}</span>
+        <button class="qb" data-action="bundle-plus" data-key="${k}">+</button>
+      </div>
+      ${hasBundleSize?`<span class="bd-mul">× ${cat.bundleSize}개</span>`:''}
+    </div>
+    <div class="bd-section">
+      <span class="bd-label">낱개</span>
+      <div class="loose-wrap" id="looseWrap_${k}">${looseBtns}</div>
+    </div>
+    ${showMemo?`<input class="bd-memo" data-action="memo" data-key="${k}" placeholder="남은 개수" value="${esc(memo)}">`:''}
+  </div>
+</div>`;
+}
+
+function renderRow(cat,item){
+  if(cat.bundleSize||cat.bundleSystem) return renderBundleRow(cat,item);
+  const k=ikey(cat.id,item.id);
+  const q=getQty(k);
+  const ph=getPhoto(k);
+  const low=q<5;
+  const custom=isCustomItem(cat,item.id);
+  const dispName=getItemName(k,item);
+  const dispSz=getItemSize(k,item);
+  const showSz=!!(dispSz&&dispSz!==cat.size&&cat.size!=='-');
+  const showSzAlways=!!(dispSz&&dispSz!==cat.size)||cat.size==='-';
+  return `
+<div class="irow" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${custom?'1':'0'}">
+  <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
+    ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
+  </div>
+  <div class="nm-w">
+    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}</div>
+    <div class="sz-lbl sz-editable" data-action="edit-size" data-key="${k}" title="클릭해서 크기 수정">${dispSz?esc(dispSz):'<span class="sz-ph">크기 추가</span>'}</div>
+  </div>
+  <div class="qc">
+    <button class="qb" data-action="minus" data-key="${k}">&#8722;</button>
+    <input class="qi${low?' low-v':''}" type="number" inputmode="decimal" step="0.1" readonly
+           data-action="qty" data-key="${k}" value="${fmtQty(q)}" min="0" max="9999">
+    <button class="qb" data-action="plus" data-key="${k}">+</button>
+  </div>
+  <div class="xb-ph"></div>
+</div>`;
+}
+
+function renderCat(cat, isCustomCat=false){
+  const coll=isColl(cat.id);
+  const items=allItems(cat);
+  const lc=lowCount(cat);
+  const rows=items.map(it=>renderRow(cat,it)).join('');
+  const addArea=addingCat===cat.id
+    ?`<div class="add-form">
+        <input class="add-inp" id="addInp_${cat.id}" placeholder="색상명 또는 항목명" maxlength="30" autocomplete="off">
+        <div class="add-row2">
+          <input class="add-sz" id="addSz_${cat.id}" placeholder="크기 (예: 5 → 5mm 자동)" maxlength="12" inputmode="decimal" autocomplete="off">
+          <button class="add-no" data-action="add-no">취소</button>
+          <button class="add-ok" data-action="add-ok" data-cat="${cat.id}">추가</button>
+        </div>
+      </div>`
+    :`<button class="add-btn" data-action="add-start" data-cat="${cat.id}">${PLUS_SVG}&nbsp;항목 추가</button>`;
+  return `
+<div class="cat">
+  <div class="cat-hdr" data-action="toggle" data-cat="${cat.id}">
+    <div class="cat-icon">${cat.icon}</div>
+    <div class="cat-info">
+      <div class="cat-name"><span class="cat-nm-txt" data-action="edit-cat-name" data-cat="${cat.id}" title="클릭해서 이름 수정">${esc(getCatName(cat))}</span>${lc>0?`<span class="low-cnt">${lc}종 부족</span>`:''}</div>
+      <div class="cat-meta">${cat.size!=='-'?esc(cat.size)+' · ':''}${items.length}종</div>
+    </div>
+    ${isCustomCat?`<button class="xb" data-action="del-cat" data-cat="${cat.id}" title="카테고리 삭제" style="margin-right:4px">×</button>`:''}
+    <svg class="cat-chev${coll?' coll':''}" data-cat="${cat.id}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+  <div class="cat-body${coll?' coll':''}" data-cat="${cat.id}">${rows}${addArea}</div>
+</div>`;
+}
+
+function render(){
+  renderInfo();
+  const allCats=[...CATALOG,...(state.customCats||[])];
+  MC.innerHTML=allCats.map(cat=>renderCat(cat,!CATALOG.find(c=>c.id===cat.id))).join('')
+    +`<div class="add-cat-wrap">
+        <button class="add-cat-btn" data-action="add-cat-open">${PLUS_SVG}&nbsp;카테고리 추가</button>
+       </div>`;
+}
+
+/* ═══════════════════════════
+   EVENT DELEGATION
+═══════════════════════════ */
+const MC=document.getElementById('mc');
+
+MC.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-action]');
+  if(!btn) return;
+  const action=btn.dataset.action;
+
+  if(action==='toggle'){
+    const catId=btn.dataset.cat;
+    const newColl=!isColl(catId);
+    saveColl(catId,newColl);
+    MC.querySelector(`.cat-body[data-cat="${catId}"]`)?.classList.toggle('coll',newColl);
+    MC.querySelector(`.cat-chev[data-cat="${catId}"]`)?.classList.toggle('coll',newColl);
+    return;
+  }
+  if(action==='bundle-plus'){
+    const k=btn.dataset.key;
+    setBundles(k,getBundles(k)+0.5);
+    document.getElementById('bdNum_'+k).textContent=fmtBundles(getBundles(k));
+    autoSave(); return;
+  }
+  if(action==='bundle-minus'){
+    const k=btn.dataset.key;
+    setBundles(k,getBundles(k)-0.5);
+    document.getElementById('bdNum_'+k).textContent=fmtBundles(getBundles(k));
+    autoSave(); return;
+  }
+  if(action==='loose'){
+    const k=btn.dataset.key, lv=+btn.dataset.level;
+    setLooseLevel(k,lv);
+    const wrap=document.getElementById('looseWrap_'+k);
+    if(wrap) wrap.querySelectorAll('.loose-btn').forEach((b,i)=>b.classList.toggle('on',i===lv));
+    autoSave(); return;
+  }
+  if(action==='plus'){
+    const k=btn.dataset.key;
+    setQty(k,Math.round((getQty(k)+0.1)*10)/10);
+    const inp=MC.querySelector(`.qi[data-key="${k}"]`);
+    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',getQty(k)<5);}
+    autoSave(); return;
+  }
+  if(action==='minus'){
+    const k=btn.dataset.key;
+    setQty(k,Math.round((getQty(k)-0.1)*10)/10);
+    const inp=MC.querySelector(`.qi[data-key="${k}"]`);
+    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',getQty(k)<5);}
+    autoSave(); return;
+  }
+  if(action==='qty'){
+    e.preventDefault(); btn.blur();
+    const k=btn.dataset.key;
+    const dispName=btn.closest('.irow')?.querySelector('.nm')?.textContent||'';
+    openQtyModal(k, getQty(k), dispName);
+    return;
+  }
+  if(action==='photo'){
+    pendingPhotoKey=btn.dataset.key;
+    document.getElementById('photoInput').click();
+    return;
+  }
+  if(action==='edit-name'){
+    e.stopPropagation();
+    const k=btn.dataset.key;
+    const curName=btn.textContent;
+    const inp=document.createElement('input');
+    inp.className='nm-edit'; inp.value=curName; inp.maxLength=30;
+    btn.replaceWith(inp); inp.focus(); inp.select();
+    function saveName(){
+      const newName=inp.value.trim()||curName;
+      state.customNames[k]=newName; autoSave();
+      const nm=document.createElement('div');
+      nm.className='nm'; nm.setAttribute('data-action','edit-name');
+      nm.setAttribute('data-key',k); nm.setAttribute('title','클릭해서 이름 수정');
+      nm.textContent=newName;
+      if(inp.parentNode) inp.replaceWith(nm);
+    }
+    inp.addEventListener('blur',saveName,{once:true});
+    inp.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter'){ev.preventDefault();inp.removeEventListener('blur',saveName);saveName();}
+      if(ev.key==='Escape'){
+        inp.removeEventListener('blur',saveName);
+        const nm2=document.createElement('div');
+        nm2.className='nm';nm2.setAttribute('data-action','edit-name');
+        nm2.setAttribute('data-key',k);nm2.setAttribute('title','클릭해서 이름 수정');
+        nm2.textContent=curName;
+        if(inp.parentNode) inp.replaceWith(nm2);
+      }
+    });
+    return;
+  }
+  if(action==='edit-size'){
+    e.stopPropagation();
+    const k=btn.dataset.key;
+    const curSz=btn.querySelector('.sz-ph')?'':(btn.textContent||'');
+    const inp=document.createElement('input');
+    inp.className='sz-edit'; inp.value=curSz; inp.maxLength=12;
+    inp.placeholder='예: 5mm'; inp.type='text'; inp.inputMode='decimal';
+    btn.replaceWith(inp); inp.focus(); inp.select();
+    function saveSz(){
+      const raw=inp.value.trim();
+      const newSz=autoMm(raw);
+      state.sizes=state.sizes||{};
+      state.sizes[k]=newSz; autoSave();
+      const el=document.createElement('div');
+      el.className='sz-lbl sz-editable'; el.setAttribute('data-action','edit-size');
+      el.setAttribute('data-key',k); el.setAttribute('title','클릭해서 크기 수정');
+      el.innerHTML=newSz?esc(newSz):'<span class="sz-ph">크기 추가</span>';
+      if(inp.parentNode) inp.replaceWith(el);
+    }
+    inp.addEventListener('blur',saveSz,{once:true});
+    inp.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter'){ev.preventDefault();inp.removeEventListener('blur',saveSz);saveSz();}
+      if(ev.key==='Escape'){
+        inp.removeEventListener('blur',saveSz);
+        const el2=document.createElement('div');
+        el2.className='sz-lbl sz-editable';el2.setAttribute('data-action','edit-size');
+        el2.setAttribute('data-key',k);el2.setAttribute('title','클릭해서 크기 수정');
+        el2.innerHTML=curSz?esc(curSz):'<span class="sz-ph">크기 추가</span>';
+        if(inp.parentNode) inp.replaceWith(el2);
+      }
+    });
+    return;
+  }
+  if(action==='del'){
+    const catId=btn.dataset.cat,itemId=btn.dataset.item;
+    if(!confirm('이 항목을 삭제할까요?')) return;
+    state.customItems[catId]=(state.customItems[catId]||[]).filter(x=>x.id!==itemId);
+    const k=ikey(catId,itemId);
+    delete state.inventory[k]; delete state.photos[k]; delete state.customNames[k]; delete (state.sizes||{})[k];
+    delete (state.bundles||{})[k]; delete (state.loose||{})[k]; delete (state.memos||{})[k];
+    render(); return;
+  }
+  if(action==='edit-cat-name'){
+    e.stopPropagation();
+    const catId=btn.dataset.cat;
+    const allCats=[...CATALOG,...(state.customCats||[])];
+    const cat=allCats.find(c=>c.id===catId); if(!cat) return;
+    const curName=getCatName(cat);
+    const inp=document.createElement('input');
+    inp.className='cat-nm-edit'; inp.value=curName; inp.maxLength=20;
+    btn.replaceWith(inp); inp.focus(); inp.select();
+    function saveCatName(){
+      const newName=inp.value.trim()||curName;
+      state.customNames=state.customNames||{};
+      state.customNames['__cat__'+catId]=newName;
+      // 커스텀 카테고리면 customCats 안의 name도 업데이트
+      const cc=(state.customCats||[]).find(c=>c.id===catId);
+      if(cc) cc.name=newName;
+      autoSave(); render();
+    }
+    inp.addEventListener('blur',saveCatName,{once:true});
+    inp.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter'){ev.preventDefault();inp.removeEventListener('blur',saveCatName);saveCatName();}
+      if(ev.key==='Escape'){inp.removeEventListener('blur',saveCatName);render();}
+    });
+    return;
+  }
+  if(action==='add-cat-open'){
+    document.getElementById('catModal').classList.remove('off');
+    setTimeout(()=>document.getElementById('catEmoji')?.focus(),40);
+    return;
+  }
+  if(action==='del-cat'){
+    const catId=btn.dataset.cat;
+    if(!confirm('이 카테고리를 삭제할까요?\n(카테고리 안의 항목도 모두 삭제됩니다)')) return;
+    state.customCats=(state.customCats||[]).filter(c=>c.id!==catId);
+    delete state.customItems[catId];
+    render(); return;
+  }
+  if(action==='add-start'){
+    addingCat=btn.dataset.cat; render();
+    setTimeout(()=>document.getElementById('addInp_'+addingCat)?.focus(),40);
+    return;
+  }
+  if(action==='add-no'){ addingCat=null; render(); return; }
+  if(action==='add-ok'){
+    const catId=btn.dataset.cat;
+    const nm=document.getElementById('addInp_'+catId)?.value.trim()||'';
+    if(!nm){showToast('항목명을 입력해주세요');return;}
+    const szRaw=document.getElementById('addSz_'+catId)?.value.trim()||'';
+    const sz=autoMm(szRaw);
+    const newId='c'+Date.now();
+    state.customItems[catId]=state.customItems[catId]||[];
+    const newItem={id:newId,name:nm};
+    if(sz) newItem.size=sz;
+    state.customItems[catId].push(newItem);
+    addingCat=null; autoSave(); render(); return;
+  }
+});
+
+MC.addEventListener('change',e=>{
+  const memo=e.target.closest('.bd-memo[data-key]');
+  if(memo){ setMemo(memo.dataset.key,memo.value); autoSave(); return; }
+  const inp=e.target.closest('.qi[data-key]');
+  if(!inp) return;
+  const k=inp.dataset.key;
+  setQty(k,inp.value);
+  inp.value=fmtQty(getQty(k));
+  inp.classList.toggle('low-v',getQty(k)<5);
+  autoSave();
+});
+
+MC.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&(e.target.closest('.add-inp')||e.target.closest('.add-sz'))&&addingCat){
+    document.querySelector(`[data-action="add-ok"][data-cat="${addingCat}"]`)?.click();
+  }
+  if(e.key==='Escape'&&addingCat){ addingCat=null; render(); }
+});
+
+/* ── 드래그앤드롭 사진 ── */
+MC.addEventListener('dragenter',e=>{const pb=e.target.closest('.pb');if(pb){e.preventDefault();pb.classList.add('drag-over');}});
+MC.addEventListener('dragover',e=>{const pb=e.target.closest('.pb');if(!pb)return;e.preventDefault();e.dataTransfer.dropEffect='copy';});
+MC.addEventListener('dragleave',e=>{const pb=e.target.closest('.pb');if(pb&&!pb.contains(e.relatedTarget))pb.classList.remove('drag-over');});
+MC.addEventListener('drop',async e=>{
+  const pb=e.target.closest('.pb');
+  if(!pb) return;
+  e.preventDefault(); pb.classList.remove('drag-over');
+  const file=Array.from(e.dataTransfer.files).find(f=>f.type.startsWith('image/'));
+  if(!file){showToast('이미지 파일을 끌어다 놓아주세요');return;}
+  const k=pb.dataset.key;
+  try{
+    const dataUrl=await compressImg(file,120,0.65);
+    state.photos[k]=dataUrl;
+    pb.innerHTML=`<img src="${dataUrl}" alt="">`;
+    await savePhotoNow(k,dataUrl);
+  }catch{showToast('사진 업로드에 실패했어요');}
+});
+
+/* ── 사진 즉시 저장 (디바운스 없이 바로 Firebase에) ── */
+async function savePhotoNow(k, dataUrl){
+  try{
+    _ownSaveTs=Date.now();
+    await DB.child('photos').child(k).set(dataUrl);
+    showToast('사진 저장됐어요 ✓');
+  }catch(err){
+    console.error(err);
+    showToast('사진 저장 실패 ⚠️');
+  }
+}
+
+/* ── 사진 클릭 업로드 ── */
+function compressImg(file,maxPx,quality){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(w>h){if(w>maxPx){h=h*maxPx/w;w=maxPx;}}
+        else{if(h>maxPx){w=w*maxPx/h;h=maxPx;}}
+        const c=document.createElement('canvas');
+        c.width=Math.round(w);c.height=Math.round(h);
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        resolve(c.toDataURL('image/jpeg',quality));
+      };
+      img.onerror=reject; img.src=ev.target.result;
+    };
+    reader.onerror=reject; reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('photoInput').addEventListener('change',async e=>{
+  const file=e.target.files[0]; e.target.value='';
+  if(!file||!pendingPhotoKey) return;
+  const k=pendingPhotoKey; pendingPhotoKey=null;
+  try{
+    const dataUrl=await compressImg(file,120,0.65);
+    state.photos[k]=dataUrl;
+    const pb=MC.querySelector(`.pb[data-key="${k}"]`);
+    if(pb) pb.innerHTML=`<img src="${dataUrl}" alt="">`;
+    await savePhotoNow(k,dataUrl);
+  }catch{showToast('사진 업로드에 실패했어요');}
+});
+
+/* ═══════════════════════════
+   FIREBASE — 실시간 저장/로드
+═══════════════════════════ */
+async function doSave(){
+  const btn=document.getElementById('saveBtn');
+  btn.disabled=true; btn.textContent='저장 중…';
+  document.getElementById('spinOv').classList.remove('off');
+  try{
+    _ownSaveTs=Date.now();
+    state.lastUpdated=new Date().toISOString();
+    state.updatedBy=me||'';
+    // 전체 저장 — 수동 버튼은 사진 포함 전부 저장
+    const clean=JSON.parse(JSON.stringify({
+      inventory:  state.inventory  ||{},
+      customItems:state.customItems||{},
+      customNames:state.customNames||{},
+      sizes:      state.sizes      ||{},
+      customCats: state.customCats ||[],
+      bundles:    state.bundles    ||{},
+      loose:      state.loose      ||{},
+      memos:      state.memos      ||{},
+      lastUpdated:state.lastUpdated,
+      updatedBy:  state.updatedBy,
+      photos:     state.photos     ||{}
+    }));
+    // 기존 Firebase 사진 먼저 읽어서 병합 (사진 날아가는 사고 방지)
+    const snap=await DB.child('photos').once('value');
+    const fbPhotos=snap.val()||{};
+    clean.photos={...fbPhotos,...(clean.photos||{})};
+    await DB.set(clean);
+    _photosChanged=false;
+    showToast('저장됐어요 ✓');
+  }catch(err){
+    console.error(err);
+    showToast('저장 실패. 인터넷 연결을 확인해주세요.');
+  }finally{
+    btn.disabled=false; btn.textContent='저장';
+    document.getElementById('spinOv').classList.add('off');
+  }
+}
+
+// 내 기기 저장 여부 플래그 (Firebase 리스너가 내 저장에 반응 안 하도록)
+let _ownSaveTs = 0;
+
+// 실시간 리스너 — 다른 기기에서 저장하면 자동 업데이트
+DB.on('value', snapshot=>{
+  const data=snapshot.val();
+  if(data){
+    state={
+      inventory:   data.inventory   ||{},
+      customItems: data.customItems ||{},
+      photos:      data.photos      ||{},
+      customNames: data.customNames ||{},
+      sizes:       data.sizes       ||{},
+      customCats:  data.customCats  ||[],
+      bundles:     data.bundles     ||{},
+      loose:       data.loose       ||{},
+      memos:       data.memos       ||{},
+      lastUpdated: data.lastUpdated ||null,
+      updatedBy:   data.updatedBy   ||''
+    };
+  }
+  // 내가 방금 저장한 거면 화면 재그리기 생략 (3초 이내)
+  const isOwnSave = (Date.now() - _ownSaveTs) < 3000;
+  if(isFirstLoad){
+    isFirstLoad=false;
+    // ── 고밀도주자 카테고리 ID 변경 마이그레이션 (hd → hd25/hd5) ──
+    const hdMap={b25:'hd25',h25:'hd25',b5:'hd5',h5:'hd5',p5:'hd5',c67:'hd5',m5:'hd5'};
+    let needMigrate=false;
+    Object.keys(state.inventory).forEach(k=>{
+      if(k.startsWith('hd_')){needMigrate=true;}
+    });
+    if(!needMigrate) Object.keys(state.photos||{}).forEach(k=>{if(k.startsWith('hd_'))needMigrate=true;});
+    if(!needMigrate && (state.customItems||{})['hd']) needMigrate=true;
+    if(needMigrate){
+      // inventory & photos & customNames & sizes 키 이전
+      ['inventory','photos','customNames','sizes'].forEach(field=>{
+        const obj=state[field]||{};
+        Object.keys(obj).forEach(k=>{
+          if(!k.startsWith('hd_')) return;
+          const itemId=k.slice(3); // 'hd_b25' → 'b25'
+          const newCat=hdMap[itemId];
+          if(newCat){
+            const newKey=newCat+'_'+itemId;
+            if(obj[k]!=null) obj[newKey]=obj[k];
+          }
+          delete obj[k];
+        });
+        state[field]=obj;
+      });
+      // customItems.hd → hd5 (기존에 hd에 추가한 커스텀 항목들)
+      if((state.customItems||{})['hd']){
+        state.customItems['hd5']=[...(state.customItems['hd5']||[]),...state.customItems['hd']];
+        delete state.customItems['hd'];
+      }
+      // 마이그레이션 완료 → Firebase에 저장
+      DB.set(JSON.parse(JSON.stringify(state)));
+      showToast('✅ 데이터 자동 복구 완료');
+    }
+    document.getElementById('spinOv').classList.add('off');
+    render();
+  } else if(isOwnSave) {
+    // 내 저장 — 화면 재그리기 생략, 헤더만 갱신
+    renderInfo();
+  } else {
+    showToast('📡 재고가 업데이트됐어요');
+    render();
+  }
+});
+
+// 연결 상태 모니터링
+firebase.database().ref('.info/connected').on('value', snap=>{
+  const bar=document.getElementById('connBar');
+  if(snap.val()===true){
+    bar.textContent=''; bar.classList.remove('on');
+  }else{
+    bar.textContent='⚠️ 오프라인 — 저장이 안 될 수 있어요';
+    bar.classList.add('on','off');
+  }
+});
+
+/* ═══════════════════════════
+   아이템 메뉴 (길게 누르기)
+═══════════════════════════ */
+let _imData=null;
+
+function openItemMenu(k, catId, itemId, isCustom, name){
+  _imData={k, catId, itemId, isCustom};
+  document.getElementById('itemMenuTitle').textContent=name||'';
+  document.getElementById('itemMenuDel').style.display=isCustom?'flex':'none';
+  document.getElementById('itemMenu').classList.remove('off');
+}
+function closeItemMenu(){
+  document.getElementById('itemMenu').classList.add('off');
+  _imData=null;
+}
+
+document.getElementById('itemMenuRename').addEventListener('click',()=>{
+  if(!_imData) return;
+  const {k}=_imData; closeItemMenu();
+  // 이름 수정 인라인 — 해당 .nm 요소를 클릭한 것처럼 실행
+  setTimeout(()=>{
+    const nm=MC.querySelector(`.nm[data-key="${k}"]`);
+    if(nm) nm.click();
+  },80);
+});
+
+document.getElementById('itemMenuDel').addEventListener('click',()=>{
+  if(!_imData) return;
+  const {catId, itemId, k}=_imData; closeItemMenu();
+  setTimeout(()=>{
+    if(!confirm('이 항목을 삭제할까요?')) return;
+    state.customItems[catId]=(state.customItems[catId]||[]).filter(x=>x.id!==itemId);
+    delete state.inventory[k]; delete state.photos[k];
+    delete state.customNames[k]; delete (state.sizes||{})[k];
+    delete (state.bundles||{})[k]; delete (state.loose||{})[k]; delete (state.memos||{})[k];
+    autoSave(); render();
+  },80);
+});
+
+document.getElementById('itemMenuCancel').addEventListener('click', closeItemMenu);
+document.getElementById('itemMenu').addEventListener('click',e=>{
+  if(e.target===document.getElementById('itemMenu')) closeItemMenu();
+});
+
+// 모바일에서 readonly 입력칸 탭 → 수량 모달 열기
+MC.addEventListener('touchend',e=>{
+  const inp=e.target.closest('.qi[data-action="qty"]');
+  if(!inp) return;
+  e.preventDefault();
+  const k=inp.dataset.key;
+  const dispName=inp.closest('.irow')?.querySelector('.nm')?.textContent||'';
+  openQtyModal(k, getQty(k), dispName);
+},{passive:false});
+
+// 길게 누르기 감지 (터치)
+let _lpTimer=null;
+MC.addEventListener('touchstart',e=>{
+  // 버튼·인풋은 제외
+  if(e.target.closest('button')||e.target.closest('input')) return;
+  const row=e.target.closest('.irow[data-row-key],.bd-row[data-row-key]');
+  if(!row) return;
+  const k=row.dataset.rowKey, catId=row.dataset.rowCat,
+        itemId=row.dataset.rowItem, isCustom=row.dataset.rowCustom==='1';
+  const dispName=row.querySelector('.nm')?.textContent||'';
+  _lpTimer=setTimeout(()=>{
+    openItemMenu(k, catId, itemId, isCustom, dispName);
+    navigator.vibrate&&navigator.vibrate(30); // 진동 피드백 (지원 기기)
+  },600);
+},{passive:true});
+MC.addEventListener('touchend',()=>clearTimeout(_lpTimer),{passive:true});
+MC.addEventListener('touchmove',()=>clearTimeout(_lpTimer),{passive:true});
+MC.addEventListener('touchcancel',()=>clearTimeout(_lpTimer),{passive:true});
+
+/* ═══════════════════════════
+   수량 입력 모달
+═══════════════════════════ */
+let _qmKey=null;
+
+function openQtyModal(k, qty, name){
+  _qmKey=k;
+  document.getElementById('qtyModName').textContent=name||'';
+  const inp=document.getElementById('qtyModInp');
+  inp.value=fmtQty(qty);
+  document.getElementById('qtyMod').classList.remove('off');
+  setTimeout(()=>{ inp.focus(); inp.select(); },60);
+}
+function closeQtyModal(){
+  document.getElementById('qtyMod').classList.add('off');
+  _qmKey=null;
+}
+function confirmQtyModal(){
+  if(!_qmKey) return;
+  const v=document.getElementById('qtyModInp').value;
+  setQty(_qmKey,v);
+  const qi=MC.querySelector(`.qi[data-key="${_qmKey}"]`);
+  if(qi){ qi.value=fmtQty(getQty(_qmKey)); qi.classList.toggle('low-v',getQty(_qmKey)<5); }
+  autoSave(); closeQtyModal();
+}
+
+document.getElementById('qtyModMinus').addEventListener('click',()=>{
+  const inp=document.getElementById('qtyModInp');
+  inp.value=fmtQty(Math.max(0,Math.round(((parseFloat(inp.value)||0)-0.1)*10)/10));
+});
+document.getElementById('qtyModPlus').addEventListener('click',()=>{
+  const inp=document.getElementById('qtyModInp');
+  inp.value=fmtQty(Math.min(9999,Math.round(((parseFloat(inp.value)||0)+0.1)*10)/10));
+});
+document.getElementById('qtyModOk').addEventListener('click',confirmQtyModal);
+document.getElementById('qtyModInp').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();confirmQtyModal();}
+  if(e.key==='Escape'){closeQtyModal();}
+});
+document.getElementById('qtyMod').addEventListener('click',e=>{
+  if(e.target===document.getElementById('qtyMod')) closeQtyModal();
+});
+
+/* ═══════════════════════════
+   INIT
+═══════════════════════════ */
+applyTheme();
+loadRole();
+if(!me) setTimeout(openRoleModal,800);
+
+/* ═══════════════════════════
+   카테고리 추가 모달
+═══════════════════════════ */
+document.getElementById('catCancel').addEventListener('click',()=>{
+  document.getElementById('catModal').classList.add('off');
+});
+document.getElementById('catModal').addEventListener('click',e=>{
+  if(e.target===document.getElementById('catModal'))
+    document.getElementById('catModal').classList.add('off');
+});
+document.getElementById('catOk').addEventListener('click',()=>{
+  const emoji=document.getElementById('catEmoji').value.trim()||'📦';
+  const name=document.getElementById('catName').value.trim();
+  if(!name){showToast('카테고리 이름을 입력해주세요');return;}
+  const szRaw=document.getElementById('catSize').value.trim();
+  const sz=autoMm(szRaw)||'-';
+  const newCat={id:'cc'+Date.now(),name,size:sz,icon:emoji,items:[]};
+  state.customCats=state.customCats||[];
+  state.customCats.push(newCat);
+  document.getElementById('catModal').classList.add('off');
+  document.getElementById('catEmoji').value='';
+  document.getElementById('catName').value='';
+  document.getElementById('catSize').value='';
+  autoSave();
+  render();
+});
+
+/* ═══════════════════════════
+   자동저장
+═══════════════════════════ */
+let _autoSaveTimer=null;
+let _photosChanged=false; // 사진이 실제로 바뀐 경우에만 사진 저장
+
+function autoSave(photosModified=false){
+  if(photosModified) _photosChanged=true;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer=setTimeout(async()=>{
+    try{
+      _ownSaveTs=Date.now();
+      state.lastUpdated=new Date().toISOString();
+      state.updatedBy=me||'';
+      // 사진을 먼저 캡처 — DB.update() 후 Firebase 리스너가 state.photos를 덮어쓰기 전에
+      const photosCopy=_photosChanged?JSON.parse(JSON.stringify(state.photos||{})):null;
+      _photosChanged=false;
+      // 사진 제외한 데이터 업데이트
+      const update={
+        inventory:   JSON.parse(JSON.stringify(state.inventory  ||{})),
+        customItems: JSON.parse(JSON.stringify(state.customItems||{})),
+        customNames: JSON.parse(JSON.stringify(state.customNames||{})),
+        sizes:       JSON.parse(JSON.stringify(state.sizes      ||{})),
+        customCats:  JSON.parse(JSON.stringify(state.customCats ||[])),
+        bundles:     JSON.parse(JSON.stringify(state.bundles    ||{})),
+        loose:       JSON.parse(JSON.stringify(state.loose      ||{})),
+        memos:       JSON.parse(JSON.stringify(state.memos      ||{})),
+        lastUpdated: state.lastUpdated,
+        updatedBy:   state.updatedBy
+      };
+      await DB.update(update);
+      // 사진이 변경된 경우에만 별도 저장 (DB.update 전에 캡처해둔 값 사용)
+      if(photosCopy){
+        await DB.child('photos').set(photosCopy);
+        // 로컬 state에도 병합 (리스너가 덮어쓰기 전에)
+        state.photos={...photosCopy,...(state.photos||{})};
+      }
+      renderInfo();
+    }catch(err){
+      console.error(err);
+      showToast('저장 실패 ⚠️');
+    }
+  },2500);
+}
+</script>
+</body>
+</html>
