@@ -150,6 +150,7 @@ button,input{font-family:var(--fn)}
 .qi::-webkit-outer-spin-button,.qi::-webkit-inner-spin-button{-webkit-appearance:none}
 .qi:focus{outline:none;border-color:var(--gold)}
 .qi.low-v{color:var(--low);border-color:var(--low)}
+.irow.low-row,.bd-row.low-row{background:var(--low-bg);border-radius:var(--r)}
 
 /* ── Delete btn / spacer ── */
 .xb{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--smoke);font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
@@ -454,6 +455,11 @@ function isLow(cat,item){
   return getQty(k)<5;
 }
 
+function updateLowState(k){
+  const low=isLowByKey(k);
+  const inp=MC.querySelector(`.qi[data-key="${k}"]`);
+  if(inp){ inp.classList.toggle('low-v',low); inp.closest('.irow,.bd-row')?.classList.toggle('low-row',low); }
+}
 function isLowByKey(k){
   const idx=k.indexOf('_');
   const catId=k.slice(0,idx), itemId=k.slice(idx+1);
@@ -567,11 +573,12 @@ function renderBundleRow(cat,item){
   const hasBundleSize=!!cat.bundleSize;
   const total=hasBundleSize?bagTotal(k,cat.bundleSize):null;
   const showMemo=cat.showMemo===true;
+  const islo=isLow(cat,item);
   const looseBtns=LOOSE_LABELS.map((l,i)=>
     `<button class="loose-btn${looseLevel===i?' on':''}" data-action="loose" data-key="${k}" data-level="${i}">${l}</button>`
   ).join('');
   return `
-<div class="bd-row" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${isCustom?'1':'0'}">
+<div class="bd-row${islo?' low-row':''}" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${isCustom?'1':'0'}">
   <div class="dh" title="드래그해서 순서 변경">⠿</div>
   <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
@@ -636,7 +643,7 @@ function renderRow(cat,item){
   const imode=cat.intOnly?'numeric':'decimal';
   const islo=isLow(cat,item);
   return `
-<div class="irow" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${custom?'1':'0'}">
+<div class="irow${islo?' low-row':''}" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${custom?'1':'0'}">
   <div class="dh" title="드래그해서 순서 변경">⠿</div>
   <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
@@ -741,7 +748,8 @@ MC.addEventListener('click',e=>{
     const prec=st>=1?1:10;
     setQty(k,Math.round((getQty(k)+st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
-    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',isLowByKey(k));}
+    if(inp) inp.value=fmtQty(getQty(k));
+    updateLowState(k);
     autoSave(); return;
   }
   if(action==='minus'){
@@ -750,7 +758,8 @@ MC.addEventListener('click',e=>{
     const prec=st>=1?1:10;
     setQty(k,Math.round((getQty(k)-st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
-    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',isLowByKey(k));}
+    if(inp) inp.value=fmtQty(getQty(k));
+    updateLowState(k);
     autoSave(); return;
   }
   if(action==='qty'){
@@ -921,7 +930,7 @@ MC.addEventListener('change',e=>{
   const k=inp.dataset.key;
   setQty(k,inp.value);
   inp.value=fmtQty(getQty(k));
-  inp.classList.toggle('low-v',getQty(k)<5);
+  updateLowState(k);
   autoSave();
 });
 
@@ -1219,7 +1228,8 @@ function confirmQtyModal(){
   const v=document.getElementById('qtyModInp').value;
   setQty(_qmKey,v);
   const qi=MC.querySelector(`.qi[data-key="${_qmKey}"]`);
-  if(qi){ qi.value=fmtQty(getQty(_qmKey)); qi.classList.toggle('low-v',isLowByKey(_qmKey)); }
+  if(qi) qi.value=fmtQty(getQty(_qmKey));
+  updateLowState(_qmKey);
   autoSave(); closeQtyModal();
 }
 
