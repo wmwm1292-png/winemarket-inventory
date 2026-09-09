@@ -609,12 +609,13 @@ function renderLooseRow(cat,item){
   const isCustom=isCustomItem(cat,item.id);
   const dispName=getItemName(k,item);
   const looseLevel=getLooseLevel(k);
+  const islo=isLow(cat,item);
   const labels=cat.levelLabels||LOOSE_LABELS;
   const looseBtns=labels.map((l,i)=>
     `<button class="loose-btn${looseLevel===i?' on':''}" data-action="loose" data-key="${k}" data-level="${i}">${l}</button>`
   ).join('');
   return `
-<div class="irow" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${isCustom?'1':'0'}">
+<div class="irow${islo?' low-row':''}" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${isCustom?'1':'0'}">
   <div class="dh" title="드래그해서 순서 변경">⠿</div>
   <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
@@ -727,12 +728,14 @@ MC.addEventListener('click',e=>{
     const k=btn.dataset.key;
     setBundles(k,getBundles(k)+0.5);
     document.getElementById('bdNum_'+k).value=fmtBundles(getBundles(k));
+    btn.closest('.irow,.bd-row')?.classList.toggle('low-row',isLowByKey(k));
     autoSave(); return;
   }
   if(action==='bundle-minus'){
     const k=btn.dataset.key;
     setBundles(k,getBundles(k)-0.5);
     document.getElementById('bdNum_'+k).value=fmtBundles(getBundles(k));
+    btn.closest('.irow,.bd-row')?.classList.toggle('low-row',isLowByKey(k));
     autoSave(); return;
   }
   if(action==='loose'){
@@ -740,6 +743,8 @@ MC.addEventListener('click',e=>{
     setLooseLevel(k,lv);
     const wrap=document.getElementById('looseWrap_'+k);
     if(wrap) wrap.querySelectorAll('.loose-btn').forEach((b,i)=>b.classList.toggle('on',i===lv));
+    const row=btn.closest('.irow,.bd-row');
+    if(row) row.classList.toggle('low-row',isLowByKey(k));
     autoSave(); return;
   }
   if(action==='plus'){
