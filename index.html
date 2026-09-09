@@ -98,7 +98,11 @@ button,input{font-family:var(--fn)}
 .cat-body.coll{max-height:0}
 
 /* ── Item row ── */
-.irow{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--border);min-height:58px}
+.irow{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 6px;border-top:1px solid var(--border);min-height:58px}
+.dh{width:20px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--border);font-size:17px;cursor:grab;touch-action:none;flex-shrink:0;user-select:none;-webkit-user-select:none}
+.dh:active{cursor:grabbing;color:var(--smoke)}
+.irow.dragging,.bd-row.dragging{position:fixed!important;opacity:.9;box-shadow:0 8px 24px rgba(0,0,0,.2);border:1.5px solid var(--gold);border-radius:var(--r);z-index:1000;pointer-events:none;background:var(--paper)}
+.drag-ph{background:var(--gold-bg);border:2px dashed var(--gold-bd);border-radius:var(--r);margin:2px 0}
 
 /* ── Photo box ── */
 .pb{width:44px;height:44px;border-radius:8px;border:1.5px dashed var(--border);background:var(--mist);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;transition:border-color .15s,background .15s,transform .12s}
@@ -201,7 +205,7 @@ button,input{font-family:var(--fn)}
 .irow{-webkit-user-select:none;user-select:none}
 
 /* ── 묶음/낱개 행 ── */
-.bd-row{display:flex;align-items:flex-start;gap:10px;padding:10px 14px 12px;border-top:1px solid var(--border);-webkit-user-select:none;user-select:none}
+.bd-row{display:flex;align-items:flex-start;gap:8px;padding:10px 10px 12px 6px;border-top:1px solid var(--border);-webkit-user-select:none;user-select:none}
 .bd-nm-w{flex:1;min-width:0}
 .bd-nm-w .nm{margin-bottom:10px}
 .bd-section{display:flex;align-items:center;gap:8px;margin-bottom:8px}
@@ -385,7 +389,8 @@ const CATALOG = [
   ]},
   {id:'flower', name:'조화', size:'-', icon:'💐', items:[
     {id:'f1',name:'소형'},{id:'f2',name:'중형'},{id:'f3',name:'대형'}
-  ]}
+  ]},
+  {id:'prembox', name:'프리미엄박스', size:'-', icon:'🎁', intOnly:true, items:[]}
 ];
 
 /* ═══════════════════════════
@@ -395,6 +400,7 @@ let state = {
   inventory: {}, customItems: {}, photos: {}, customNames: {}, sizes: {},
   customCats: [],
   bundles: {}, loose: {}, memos: {},
+  itemOrder: {},
   lastUpdated: null, updatedBy: ''
 };
 let isFirstLoad = true;
@@ -418,7 +424,13 @@ function getItemName(k,item){ const cn=state.customNames&&state.customNames[k]; 
 function getCatName(cat){ const cn=(state.customNames||{})['__cat__'+cat.id]; return(cn!=null&&cn!=='')?cn:cat.name; }
 function getItemSize(k,item){ const sv=state.sizes&&state.sizes[k]; return(sv!=null&&sv!=='')?sv:(item.size||''); }
 function autoMm(v){ v=v.trim(); if(!v) return ''; if(/^[\d.]+$/.test(v)) return v+'mm'; return v; }
-function allItems(cat){ return [...(cat.items||[]),...(state.customItems[cat.id]||[])]; }
+function allItems(cat){
+  const base=[...(cat.items||[]),...(state.customItems[cat.id]||[])];
+  const order=(state.itemOrder||{})[cat.id];
+  if(!order||!order.length) return base;
+  const om={};order.forEach((id,i)=>om[id]=i);
+  return [...base].sort((a,b)=>(om[a.id]??9999)-(om[b.id]??9999));
+}
 function isCustomItem(cat,itemId){ return (state.customItems[cat.id]||[]).some(x=>x.id===itemId); }
 function isColl(catId){ try{ const v=localStorage.getItem('wsc2_'+catId); return v===null?true:v==='1'; }catch(e){return true;} }
 function saveColl(catId,v){ try{localStorage.setItem('wsc2_'+catId,v?'1':'0');}catch(e){} }
@@ -521,6 +533,7 @@ function renderBundleRow(cat,item){
   ).join('');
   return `
 <div class="bd-row" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${isCustom?'1':'0'}">
+  <div class="dh" title="드래그해서 순서 변경">⠿</div>
   <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
   </div>
@@ -557,6 +570,7 @@ function renderLooseRow(cat,item){
   ).join('');
   return `
 <div class="irow" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${isCustom?'1':'0'}">
+  <div class="dh" title="드래그해서 순서 변경">⠿</div>
   <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
   </div>
@@ -580,8 +594,11 @@ function renderRow(cat,item){
   const dispSz=getItemSize(k,item);
   const showSz=!!(dispSz&&dispSz!==cat.size&&cat.size!=='-');
   const showSzAlways=!!(dispSz&&dispSz!==cat.size)||cat.size==='-';
+  const step=cat.intOnly?'1':'0.1';
+  const imode=cat.intOnly?'numeric':'decimal';
   return `
 <div class="irow" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${custom?'1':'0'}">
+  <div class="dh" title="드래그해서 순서 변경">⠿</div>
   <div class="pb" data-action="photo" data-key="${k}" title="클릭하거나 사진을 끌어다 놓으세요">
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
   </div>
@@ -590,9 +607,9 @@ function renderRow(cat,item){
     <div class="sz-lbl sz-editable" data-action="edit-size" data-key="${k}" title="클릭해서 크기 수정">${dispSz?esc(dispSz):'<span class="sz-ph">크기 추가</span>'}</div>
   </div>
   <div class="qc">
-    <button class="qb" data-action="minus" data-key="${k}">&#8722;</button>
-    <input class="qi${low?' low-v':''}" type="number" inputmode="decimal" step="0.1" min="0" max="9999" data-action="qty" data-key="${k}" value="${fmtQty(q)}">
-    <button class="qb" data-action="plus" data-key="${k}">+</button>
+    <button class="qb" data-action="minus" data-key="${k}" data-step="${step}">&#8722;</button>
+    <input class="qi${low?' low-v':''}" type="number" inputmode="${imode}" step="${step}" min="0" max="9999" data-action="qty" data-key="${k}" value="${fmtQty(q)}">
+    <button class="qb" data-action="plus" data-key="${k}" data-step="${step}">+</button>
   </div>
   ${custom?`<button class="xb del-item-btn" data-action="del-item" data-key="${k}" data-cat="${cat.id}" data-item="${item.id}" title="삭제">×</button>`:'<div class="xb-ph"></div>'}
 </div>`;
@@ -635,6 +652,7 @@ function render(){
     +`<div class="add-cat-wrap">
         <button class="add-cat-btn" data-action="add-cat-open">${PLUS_SVG}&nbsp;카테고리 추가</button>
        </div>`;
+  setupDrag();
 }
 
 /* ═══════════════════════════
@@ -676,14 +694,18 @@ MC.addEventListener('click',e=>{
   }
   if(action==='plus'){
     const k=btn.dataset.key;
-    setQty(k,Math.round((getQty(k)+0.1)*10)/10);
+    const st=parseFloat(btn.dataset.step||0.1);
+    const prec=st>=1?1:10;
+    setQty(k,Math.round((getQty(k)+st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
     if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',getQty(k)<5);}
     autoSave(); return;
   }
   if(action==='minus'){
     const k=btn.dataset.key;
-    setQty(k,Math.round((getQty(k)-0.1)*10)/10);
+    const st=parseFloat(btn.dataset.step||0.1);
+    const prec=st>=1?1:10;
+    setQty(k,Math.round((getQty(k)-st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
     if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',getQty(k)<5);}
     autoSave(); return;
@@ -953,6 +975,7 @@ async function doSave(){
       bundles:    state.bundles    ||{},
       loose:      state.loose      ||{},
       memos:      state.memos      ||{},
+      itemOrder:  state.itemOrder  ||{},
       lastUpdated:state.lastUpdated,
       updatedBy:  state.updatedBy,
       photos:     state.photos     ||{}
@@ -990,6 +1013,7 @@ DB.on('value', snapshot=>{
       bundles:     data.bundles     ||{},
       loose:       data.loose       ||{},
       memos:       data.memos       ||{},
+      itemOrder:   data.itemOrder   ||{},
       lastUpdated: data.lastUpdated ||null,
       updatedBy:   data.updatedBy   ||''
     };
@@ -1200,6 +1224,76 @@ document.getElementById('catOk').addEventListener('click',()=>{
 let _autoSaveTimer=null;
 let _photosChanged=false; // 사진이 실제로 바뀐 경우에만 사진 저장
 
+/* ═══════════════════════════
+   DRAG TO REORDER ITEMS
+═══════════════════════════ */
+let _drag=null;
+
+function setupDrag(){
+  MC.querySelectorAll('.dh').forEach(h=>{
+    h.addEventListener('pointerdown',_dragStart,{passive:false});
+  });
+}
+
+function _dragStart(e){
+  e.preventDefault();
+  const row=e.currentTarget.closest('[data-row-cat]');
+  if(!row) return;
+  const catId=row.dataset.rowCat;
+  const body=row.closest('.cat-body');
+  if(!body) return;
+
+  const rect=row.getBoundingClientRect();
+  const ph=document.createElement('div');
+  ph.className='drag-ph';
+  ph.style.height=row.offsetHeight+'px';
+  row.after(ph);
+
+  row.classList.add('dragging');
+  row.style.top=rect.top+'px';
+  row.style.left=rect.left+'px';
+  row.style.width=rect.width+'px';
+
+  _drag={catId,body,row,ph,offsetY:e.clientY-rect.top};
+  e.currentTarget.setPointerCapture(e.pointerId);
+  document.addEventListener('pointermove',_dragMove,{passive:false});
+  document.addEventListener('pointerup',_dragEnd,{once:true});
+}
+
+function _dragMove(e){
+  if(!_drag) return;
+  e.preventDefault();
+  const {row,ph,body,catId,offsetY}=_drag;
+  row.style.top=(e.clientY-offsetY)+'px';
+
+  const rows=[...body.querySelectorAll(`[data-row-cat="${catId}"]:not(.dragging)`)];
+  let insertBefore=null;
+  for(const r of rows){
+    const rr=r.getBoundingClientRect();
+    if(e.clientY<rr.top+rr.height/2){insertBefore=r;break;}
+  }
+  const addEl=body.querySelector('.add-btn,.add-form');
+  if(insertBefore) body.insertBefore(ph,insertBefore);
+  else if(addEl) body.insertBefore(ph,addEl);
+  else body.appendChild(ph);
+}
+
+function _dragEnd(){
+  if(!_drag) return;
+  document.removeEventListener('pointermove',_dragMove);
+  const {catId,body,row,ph}=_drag;
+  _drag=null;
+  body.insertBefore(row,ph);
+  ph.remove();
+  row.classList.remove('dragging');
+  row.style.cssText='';
+
+  const newOrder=[...body.querySelectorAll(`[data-row-item][data-row-cat="${catId}"]`)].map(r=>r.dataset.rowItem);
+  state.itemOrder=state.itemOrder||{};
+  state.itemOrder[catId]=newOrder;
+  autoSave();
+}
+
 function autoSave(photosModified=false){
   if(photosModified) _photosChanged=true;
   clearTimeout(_autoSaveTimer);
@@ -1221,6 +1315,7 @@ function autoSave(photosModified=false){
         bundles:     JSON.parse(JSON.stringify(state.bundles    ||{})),
         loose:       JSON.parse(JSON.stringify(state.loose      ||{})),
         memos:       JSON.parse(JSON.stringify(state.memos      ||{})),
+        itemOrder:   JSON.parse(JSON.stringify(state.itemOrder  ||{})),
         lastUpdated: state.lastUpdated,
         updatedBy:   state.updatedBy
       };
