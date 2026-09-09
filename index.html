@@ -82,8 +82,12 @@ button,input{font-family:var(--fn)}
 
 /* ── Category card ── */
 .cat{background:var(--paper);border-radius:var(--r);border:1px solid var(--border);margin-bottom:10px;overflow:hidden}
-.cat-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none;transition:background .15s}
+.cat-hdr{display:flex;align-items:center;gap:10px;padding:12px 10px 12px 6px;cursor:pointer;user-select:none;transition:background .15s}
 .cat-hdr:hover{background:var(--gold-bg)}
+.cdh{width:22px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--border);font-size:18px;cursor:grab;touch-action:none;flex-shrink:0;user-select:none;-webkit-user-select:none}
+.cdh:active{cursor:grabbing;color:var(--smoke)}
+.cat.dragging{position:fixed!important;opacity:.92;box-shadow:0 8px 28px rgba(0,0,0,.22);border:1.5px solid var(--gold);border-radius:var(--r);z-index:1000;pointer-events:none;background:var(--paper)}
+.cat-ph{background:var(--gold-bg);border:2px dashed var(--gold-bd);border-radius:var(--r);margin:6px 0}
 .cat-icon{width:38px;height:38px;border-radius:8px;background:var(--gold-bg);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
 .cat-info{flex:1;min-width:0}
 .cat-name{font:600 14px var(--fn);color:var(--ink);display:flex;align-items:center;flex-wrap:wrap;gap:5px}
@@ -401,6 +405,7 @@ let state = {
   customCats: [],
   bundles: {}, loose: {}, memos: {},
   itemOrder: {},
+  catOrder: [],
   lastUpdated: null, updatedBy: ''
 };
 let isFirstLoad = true;
@@ -424,6 +429,40 @@ function getItemName(k,item){ const cn=state.customNames&&state.customNames[k]; 
 function getCatName(cat){ const cn=(state.customNames||{})['__cat__'+cat.id]; return(cn!=null&&cn!=='')?cn:cat.name; }
 function getItemSize(k,item){ const sv=state.sizes&&state.sizes[k]; return(sv!=null&&sv!=='')?sv:(item.size||''); }
 function autoMm(v){ v=v.trim(); if(!v) return ''; if(/^[\d.]+$/.test(v)) return v+'mm'; return v; }
+function getCatById(catId){
+  return [...CATALOG,...(state.customCats||[])].find(c=>c.id===catId);
+}
+
+function isLow(cat,item){
+  const k=ikey(cat.id,item.id);
+  const id=cat.id;
+  if(id==='flower') return false;
+  if(cat.looseOnly){
+    if(id==='wineglass') return getLooseLevel(k)===0;
+    return getLooseLevel(k)<=1;
+  }
+  if(cat.bundleSize||cat.bundleSystem) return getBundles(k)===0&&getLooseLevel(k)<=1;
+  if(id==='prembox'){
+    const nm=getItemName(k,item);
+    if(nm.includes('2본입')) return getQty(k)<=2;
+    if(nm.includes('골드')) return getQty(k)<=1;
+    return getQty(k)<=5;
+  }
+  if(['pearl','yangdan','hd25','hd5','g10','g5'].includes(id)) return getQty(k)<=0.3;
+  const catNm=getCatName(cat);
+  if(catNm.includes('하프바틀')) return getQty(k)<=3;
+  return getQty(k)<5;
+}
+
+function isLowByKey(k){
+  const idx=k.indexOf('_');
+  const catId=k.slice(0,idx), itemId=k.slice(idx+1);
+  const cat=getCatById(catId);
+  if(!cat) return false;
+  const item=allItems(cat).find(it=>it.id===itemId)||{id:itemId,name:itemId};
+  return isLow(cat,item);
+}
+
 function allItems(cat){
   const base=[...(cat.items||[]),...(state.customItems[cat.id]||[])];
   const order=(state.itemOrder||{})[cat.id];
@@ -434,7 +473,7 @@ function allItems(cat){
 function isCustomItem(cat,itemId){ return (state.customItems[cat.id]||[]).some(x=>x.id===itemId); }
 function isColl(catId){ try{ const v=localStorage.getItem('wsc2_'+catId); return v===null?true:v==='1'; }catch(e){return true;} }
 function saveColl(catId,v){ try{localStorage.setItem('wsc2_'+catId,v?'1':'0');}catch(e){} }
-function lowCount(cat){ return allItems(cat).filter(it=>getQty(ikey(cat.id,it.id))<5).length; }
+function lowCount(cat){ return allItems(cat).filter(it=>isLow(cat,it)).length; }
 
 /* ── 묶음/낱개 helpers ── */
 const LOOSE_LABELS=['없음','조금','반쯤','꽤있음','거의가득'];
@@ -554,7 +593,6 @@ function renderBundleRow(cat,item){
     </div>
     ${showMemo?`<input class="bd-memo" data-action="memo" data-key="${k}" placeholder="${esc(cat.memoPh||'남은 개수')}" value="${esc(memo)}">`:''}
   </div>
-  ${isCustom?`<button class="xb del-item-btn" data-action="del-item" data-key="${k}" data-cat="${cat.id}" data-item="${item.id}" title="삭제" style="align-self:flex-start;margin-top:4px">×</button>`:''}
 </div>`;
 }
 
@@ -596,6 +634,7 @@ function renderRow(cat,item){
   const showSzAlways=!!(dispSz&&dispSz!==cat.size)||cat.size==='-';
   const step=cat.intOnly?'1':'0.1';
   const imode=cat.intOnly?'numeric':'decimal';
+  const islo=isLow(cat,item);
   return `
 <div class="irow" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${custom?'1':'0'}">
   <div class="dh" title="드래그해서 순서 변경">⠿</div>
@@ -608,10 +647,10 @@ function renderRow(cat,item){
   </div>
   <div class="qc">
     <button class="qb" data-action="minus" data-key="${k}" data-step="${step}">&#8722;</button>
-    <input class="qi${low?' low-v':''}" type="number" inputmode="${imode}" step="${step}" min="0" max="9999" data-action="qty" data-key="${k}" value="${fmtQty(q)}">
+    <input class="qi${islo?' low-v':''}" type="number" inputmode="${imode}" step="${step}" min="0" max="9999" data-action="qty" data-key="${k}" value="${fmtQty(q)}">
     <button class="qb" data-action="plus" data-key="${k}" data-step="${step}">+</button>
   </div>
-  ${custom?`<button class="xb del-item-btn" data-action="del-item" data-key="${k}" data-cat="${cat.id}" data-item="${item.id}" title="삭제">×</button>`:'<div class="xb-ph"></div>'}
+  <div class="xb-ph"></div>
 </div>`;
 }
 
@@ -631,8 +670,9 @@ function renderCat(cat, isCustomCat=false){
       </div>`
     :`<button class="add-btn" data-action="add-start" data-cat="${cat.id}">${PLUS_SVG}&nbsp;항목 추가</button>`;
   return `
-<div class="cat">
+<div class="cat" data-cat-id="${cat.id}">
   <div class="cat-hdr" data-action="toggle" data-cat="${cat.id}">
+    <div class="cdh" title="드래그해서 카테고리 순서 변경">⠿</div>
     <div class="cat-icon">${cat.icon}</div>
     <div class="cat-info">
       <div class="cat-name"><span class="cat-nm-txt" data-action="edit-cat-name" data-cat="${cat.id}" title="클릭해서 이름 수정">${esc(getCatName(cat))}</span>${lc>0?`<span class="low-cnt">${lc}종 부족</span>`:''}</div>
@@ -648,6 +688,8 @@ function renderCat(cat, isCustomCat=false){
 function render(){
   renderInfo();
   const allCats=[...CATALOG,...(state.customCats||[])];
+  const co=state.catOrder||[];
+  if(co.length){const om={};co.forEach((id,i)=>om[id]=i);allCats.sort((a,b)=>(om[a.id]??9999)-(om[b.id]??9999));}
   MC.innerHTML=allCats.map(cat=>renderCat(cat,!CATALOG.find(c=>c.id===cat.id))).join('')
     +`<div class="add-cat-wrap">
         <button class="add-cat-btn" data-action="add-cat-open">${PLUS_SVG}&nbsp;카테고리 추가</button>
@@ -666,6 +708,7 @@ MC.addEventListener('click',e=>{
   const action=btn.dataset.action;
 
   if(action==='toggle'){
+    if(e.target.closest('.cdh')) return;
     const catId=btn.dataset.cat;
     const newColl=!isColl(catId);
     saveColl(catId,newColl);
@@ -698,7 +741,7 @@ MC.addEventListener('click',e=>{
     const prec=st>=1?1:10;
     setQty(k,Math.round((getQty(k)+st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
-    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',getQty(k)<5);}
+    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',isLowByKey(k));}
     autoSave(); return;
   }
   if(action==='minus'){
@@ -707,7 +750,7 @@ MC.addEventListener('click',e=>{
     const prec=st>=1?1:10;
     setQty(k,Math.round((getQty(k)-st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
-    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',getQty(k)<5);}
+    if(inp){inp.value=fmtQty(getQty(k));inp.classList.toggle('low-v',isLowByKey(k));}
     autoSave(); return;
   }
   if(action==='qty'){
@@ -976,6 +1019,7 @@ async function doSave(){
       loose:      state.loose      ||{},
       memos:      state.memos      ||{},
       itemOrder:  state.itemOrder  ||{},
+      catOrder:   state.catOrder   ||[],
       lastUpdated:state.lastUpdated,
       updatedBy:  state.updatedBy,
       photos:     state.photos     ||{}
@@ -1014,6 +1058,7 @@ DB.on('value', snapshot=>{
       loose:       data.loose       ||{},
       memos:       data.memos       ||{},
       itemOrder:   data.itemOrder   ||{},
+      catOrder:    data.catOrder    ||[],
       lastUpdated: data.lastUpdated ||null,
       updatedBy:   data.updatedBy   ||''
     };
@@ -1141,6 +1186,17 @@ MC.addEventListener('touchend',()=>clearTimeout(_lpTimer),{passive:true});
 MC.addEventListener('touchmove',()=>clearTimeout(_lpTimer),{passive:true});
 MC.addEventListener('touchcancel',()=>clearTimeout(_lpTimer),{passive:true});
 
+// PC 우클릭으로도 아이템 메뉴 열기
+MC.addEventListener('contextmenu',e=>{
+  const row=e.target.closest('.irow[data-row-key],.bd-row[data-row-key]');
+  if(!row) return;
+  e.preventDefault();
+  const k=row.dataset.rowKey, catId=row.dataset.rowCat,
+        itemId=row.dataset.rowItem, isCustom=row.dataset.rowCustom==='1';
+  const dispName=row.querySelector('.nm')?.textContent||'';
+  openItemMenu(k, catId, itemId, isCustom, dispName);
+});
+
 /* ═══════════════════════════
    수량 입력 모달
 ═══════════════════════════ */
@@ -1163,7 +1219,7 @@ function confirmQtyModal(){
   const v=document.getElementById('qtyModInp').value;
   setQty(_qmKey,v);
   const qi=MC.querySelector(`.qi[data-key="${_qmKey}"]`);
-  if(qi){ qi.value=fmtQty(getQty(_qmKey)); qi.classList.toggle('low-v',getQty(_qmKey)<5); }
+  if(qi){ qi.value=fmtQty(getQty(_qmKey)); qi.classList.toggle('low-v',isLowByKey(_qmKey)); }
   autoSave(); closeQtyModal();
 }
 
@@ -1233,6 +1289,61 @@ function setupDrag(){
   MC.querySelectorAll('.dh').forEach(h=>{
     h.addEventListener('pointerdown',_dragStart,{passive:false});
   });
+  MC.querySelectorAll('.cdh').forEach(h=>{
+    h.addEventListener('pointerdown',_catDragStart,{passive:false});
+  });
+}
+
+/* ── 카테고리 드래그 ── */
+let _catDrag=null;
+function _catDragStart(e){
+  e.preventDefault();
+  e.stopPropagation();
+  const cat=e.currentTarget.closest('.cat');
+  if(!cat) return;
+  const wrap=cat.parentElement;
+  const rect=cat.getBoundingClientRect();
+  const ph=document.createElement('div');
+  ph.className='cat-ph';
+  ph.style.height=cat.offsetHeight+'px';
+  cat.after(ph);
+  cat.classList.add('dragging');
+  cat.style.top=rect.top+'px';
+  cat.style.left=rect.left+'px';
+  cat.style.width=rect.width+'px';
+  _catDrag={cat,wrap,ph,offsetY:e.clientY-rect.top};
+  e.currentTarget.setPointerCapture(e.pointerId);
+  document.addEventListener('pointermove',_catDragMove,{passive:false});
+  document.addEventListener('pointerup',_catDragEnd,{once:true});
+}
+function _catDragMove(e){
+  if(!_catDrag) return;
+  e.preventDefault();
+  const {cat,wrap,ph,offsetY}=_catDrag;
+  cat.style.top=(e.clientY-offsetY)+'px';
+  const cats=[...wrap.querySelectorAll('.cat:not(.dragging)')];
+  let insertBefore=null;
+  for(const c of cats){
+    const cr=c.getBoundingClientRect();
+    if(e.clientY<cr.top+cr.height/2){insertBefore=c;break;}
+  }
+  const addWrap=wrap.querySelector('.add-cat-wrap');
+  if(insertBefore) wrap.insertBefore(ph,insertBefore);
+  else if(addWrap) wrap.insertBefore(ph,addWrap);
+  else wrap.appendChild(ph);
+}
+function _catDragEnd(){
+  if(!_catDrag) return;
+  document.removeEventListener('pointermove',_catDragMove);
+  const {cat,wrap,ph}=_catDrag;
+  _catDrag=null;
+  wrap.insertBefore(cat,ph);
+  ph.remove();
+  cat.classList.remove('dragging');
+  cat.style.cssText='';
+  const newOrder=[...wrap.querySelectorAll('.cat[data-cat-id]')].map(c=>c.dataset.catId);
+  state.catOrder=newOrder;
+  autoSave();
 }
 
 function _dragStart(e){
@@ -1316,6 +1427,7 @@ function autoSave(photosModified=false){
         loose:       JSON.parse(JSON.stringify(state.loose      ||{})),
         memos:       JSON.parse(JSON.stringify(state.memos      ||{})),
         itemOrder:   JSON.parse(JSON.stringify(state.itemOrder  ||{})),
+        catOrder:    JSON.parse(JSON.stringify(state.catOrder   ||[])),
         lastUpdated: state.lastUpdated,
         updatedBy:   state.updatedBy
       };
