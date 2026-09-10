@@ -151,6 +151,8 @@ button,input{font-family:var(--fn)}
 .qi:focus{outline:none;border-color:var(--gold)}
 .qi.low-v{color:var(--low);border-color:var(--low)}
 .irow.low-row,.bd-row.low-row{background:var(--low-bg);border-radius:var(--r)}
+.new-badge{display:inline-block;background:var(--gold);color:#fff;font:700 9px var(--fn);border-radius:4px;padding:1px 4px;margin-left:5px;vertical-align:middle;letter-spacing:.5px}
+.cat-ts{color:var(--smoke);font-size:10px}
 
 /* ── Delete btn / spacer ── */
 .xb{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--smoke);font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
@@ -407,8 +409,13 @@ let state = {
   bundles: {}, loose: {}, memos: {},
   itemOrder: {},
   catOrder: [],
+  itemTs: {},
   lastUpdated: null, updatedBy: ''
 };
+// 이 기기가 마지막으로 앱을 열었던 시각 (New 배지 기준)
+let _lastView = 0;
+try { _lastView = parseInt(localStorage.getItem('wsc2_lastView')||'0'); } catch(e){}
+try { localStorage.setItem('wsc2_lastView', String(Date.now())); } catch(e){}
 let isFirstLoad = true;
 
 /* ═══════════════════════════
@@ -455,6 +462,28 @@ function isLow(cat,item){
   return getQty(k)<5;
 }
 
+function isNew(k){
+  const ts=(state.itemTs||{})[k]||0;
+  if(!ts||!_lastView) return false;
+  return ts>_lastView && (Date.now()-ts)<86400000; // 마지막 열람 이후 + 24시간 이내
+}
+function fmtTs(ts){
+  if(!ts) return '';
+  const d=new Date(ts), now=new Date();
+  const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  if(d.toDateString()===now.toDateString()) return '오늘 '+hm;
+  const yest=new Date(now); yest.setDate(yest.getDate()-1);
+  if(d.toDateString()===yest.toDateString()) return '어제 '+hm;
+  return (d.getMonth()+1)+'/'+d.getDate()+' '+hm;
+}
+function catLastTs(cat){
+  const its=state.itemTs||{};
+  return allItems(cat).reduce((mx,it)=>Math.max(mx,its[ikey(cat.id,it.id)]||0),0);
+}
+function touchItemTs(k){
+  state.itemTs=state.itemTs||{};
+  state.itemTs[k]=Date.now();
+}
 function updateLowState(k){
   const low=isLowByKey(k);
   const inp=MC.querySelector(`.qi[data-key="${k}"]`);
@@ -584,7 +613,7 @@ function renderBundleRow(cat,item){
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
   </div>
   <div class="bd-nm-w">
-    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}</div>
+    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}${isNew(k)?'<span class="new-badge">N</span>':''}</div>
     <div class="bd-section">
       <span class="bd-label">묶음</span>
       <div class="bd-qc">
@@ -621,7 +650,7 @@ function renderLooseRow(cat,item){
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
   </div>
   <div class="nm-w" style="flex:1">
-    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}</div>
+    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}${isNew(k)?'<span class="new-badge">N</span>':''}</div>
     <div class="loose-wrap" id="looseWrap_${k}" style="margin-top:6px">${looseBtns}</div>
     <input class="bd-memo" data-action="memo" data-key="${k}" placeholder="메모" value="${esc(getMemo(k))}">
   </div>
@@ -640,8 +669,9 @@ function renderRow(cat,item){
   const dispSz=getItemSize(k,item);
   const showSz=!!(dispSz&&dispSz!==cat.size&&cat.size!=='-');
   const showSzAlways=!!(dispSz&&dispSz!==cat.size)||cat.size==='-';
-  const step=cat.intOnly?'1':'0.1';
-  const imode=cat.intOnly?'numeric':'decimal';
+  const useInt=cat.intOnly||getCatName(cat).includes('하프바틀');
+  const step=useInt?'1':'0.1';
+  const imode=useInt?'numeric':'decimal';
   const islo=isLow(cat,item);
   return `
 <div class="irow${islo?' low-row':''}" data-row-key="${k}" data-row-cat="${cat.id}" data-row-item="${item.id}" data-row-custom="${custom?'1':'0'}">
@@ -650,7 +680,7 @@ function renderRow(cat,item){
     ${ph?`<img src="${ph}" alt="${esc(dispName)}">`:CAM_SVG}
   </div>
   <div class="nm-w">
-    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}</div>
+    <div class="nm" data-action="edit-name" data-key="${k}" title="클릭해서 이름 수정">${esc(dispName)}${isNew(k)?'<span class="new-badge">N</span>':''}</div>
     <div class="sz-lbl sz-editable" data-action="edit-size" data-key="${k}" title="클릭해서 크기 수정">${dispSz?esc(dispSz):'<span class="sz-ph">크기 추가</span>'}</div>
   </div>
   <div class="qc">
@@ -684,7 +714,7 @@ function renderCat(cat, isCustomCat=false){
     <div class="cat-icon">${cat.icon}</div>
     <div class="cat-info">
       <div class="cat-name"><span class="cat-nm-txt" data-action="edit-cat-name" data-cat="${cat.id}" title="클릭해서 이름 수정">${esc(getCatName(cat))}</span>${lc>0?`<span class="low-cnt">${lc}종 부족</span>`:''}</div>
-      <div class="cat-meta">${cat.size!=='-'?esc(cat.size)+' · ':''}${items.length}종</div>
+      <div class="cat-meta">${cat.size!=='-'?esc(cat.size)+' · ':''}${items.length}종${(()=>{const ts=catLastTs(cat);return ts?` · <span class="cat-ts">${fmtTs(ts)}</span>`:''})()}</div>
     </div>
     ${isCustomCat?`<button class="xb" data-action="del-cat" data-cat="${cat.id}" title="카테고리 삭제" style="margin-right:4px">×</button>`:''}
     <svg class="cat-chev${coll?' coll':''}" data-cat="${cat.id}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -729,14 +759,14 @@ MC.addEventListener('click',e=>{
     setBundles(k,getBundles(k)+0.5);
     document.getElementById('bdNum_'+k).value=fmtBundles(getBundles(k));
     btn.closest('.irow,.bd-row')?.classList.toggle('low-row',isLowByKey(k));
-    autoSave(); return;
+    touchItemTs(k); autoSave(); return;
   }
   if(action==='bundle-minus'){
     const k=btn.dataset.key;
     setBundles(k,getBundles(k)-0.5);
     document.getElementById('bdNum_'+k).value=fmtBundles(getBundles(k));
     btn.closest('.irow,.bd-row')?.classList.toggle('low-row',isLowByKey(k));
-    autoSave(); return;
+    touchItemTs(k); autoSave(); return;
   }
   if(action==='loose'){
     const k=btn.dataset.key, lv=+btn.dataset.level;
@@ -745,7 +775,7 @@ MC.addEventListener('click',e=>{
     if(wrap) wrap.querySelectorAll('.loose-btn').forEach((b,i)=>b.classList.toggle('on',i===lv));
     const row=btn.closest('.irow,.bd-row');
     if(row) row.classList.toggle('low-row',isLowByKey(k));
-    autoSave(); return;
+    touchItemTs(k); autoSave(); return;
   }
   if(action==='plus'){
     const k=btn.dataset.key;
@@ -754,7 +784,7 @@ MC.addEventListener('click',e=>{
     setQty(k,Math.round((getQty(k)+st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
     if(inp) inp.value=fmtQty(getQty(k));
-    updateLowState(k);
+    updateLowState(k); touchItemTs(k);
     autoSave(); return;
   }
   if(action==='minus'){
@@ -764,7 +794,7 @@ MC.addEventListener('click',e=>{
     setQty(k,Math.round((getQty(k)-st)*prec)/prec);
     const inp=MC.querySelector(`.qi[data-key="${k}"]`);
     if(inp) inp.value=fmtQty(getQty(k));
-    updateLowState(k);
+    updateLowState(k); touchItemTs(k);
     autoSave(); return;
   }
   if(action==='qty'){
@@ -935,7 +965,7 @@ MC.addEventListener('change',e=>{
   const k=inp.dataset.key;
   setQty(k,inp.value);
   inp.value=fmtQty(getQty(k));
-  updateLowState(k);
+  updateLowState(k); touchItemTs(k);
   autoSave();
 });
 
@@ -1034,6 +1064,7 @@ async function doSave(){
       memos:      state.memos      ||{},
       itemOrder:  state.itemOrder  ||{},
       catOrder:   state.catOrder   ||[],
+      itemTs:     state.itemTs     ||{},
       lastUpdated:state.lastUpdated,
       updatedBy:  state.updatedBy,
       photos:     state.photos     ||{}
@@ -1073,6 +1104,7 @@ DB.on('value', snapshot=>{
       memos:       data.memos       ||{},
       itemOrder:   data.itemOrder   ||{},
       catOrder:    data.catOrder    ||[],
+      itemTs:      data.itemTs      ||{},
       lastUpdated: data.lastUpdated ||null,
       updatedBy:   data.updatedBy   ||''
     };
@@ -1234,7 +1266,7 @@ function confirmQtyModal(){
   setQty(_qmKey,v);
   const qi=MC.querySelector(`.qi[data-key="${_qmKey}"]`);
   if(qi) qi.value=fmtQty(getQty(_qmKey));
-  updateLowState(_qmKey);
+  updateLowState(_qmKey); touchItemTs(_qmKey);
   autoSave(); closeQtyModal();
 }
 
@@ -1443,6 +1475,7 @@ function autoSave(photosModified=false){
         memos:       JSON.parse(JSON.stringify(state.memos      ||{})),
         itemOrder:   JSON.parse(JSON.stringify(state.itemOrder  ||{})),
         catOrder:    JSON.parse(JSON.stringify(state.catOrder   ||[])),
+        itemTs:      JSON.parse(JSON.stringify(state.itemTs     ||{})),
         lastUpdated: state.lastUpdated,
         updatedBy:   state.updatedBy
       };
