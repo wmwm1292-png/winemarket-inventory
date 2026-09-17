@@ -714,7 +714,7 @@ function renderRow(cat,item){
   </div>
   <div class="qc">
     <button class="qb" data-action="minus" data-key="${k}" data-step="${step}">&#8722;</button>
-    <input class="qi${islo?' low-v':''}" type="number" inputmode="${imode}" step="${step}" min="0" max="9999" data-action="qty" data-key="${k}" value="${fmtQty(q)}">
+    <input class="qi${islo?' low-v':''}" type="number" inputmode="${imode}" step="${step}" data-step="${step}" min="0" max="9999" data-action="qty" data-key="${k}" value="${fmtQty(q)}">
     <button class="qb" data-action="plus" data-key="${k}" data-step="${step}">+</button>
   </div>
   <div class="xb-ph"></div>
@@ -857,7 +857,7 @@ MC.addEventListener('click',e=>{
     e.preventDefault(); btn.blur();
     const k=btn.dataset.key;
     const dispName=btn.closest('.irow')?.querySelector('.nm')?.textContent||'';
-    const st=parseFloat(btn.step||0.1);
+    const st=parseFloat(btn.dataset.step||0.1);
     openQtyModal(k, getQty(k), dispName, st);
     return;
   }
