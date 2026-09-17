@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>와인샵 재고관리</title>
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="와인샵 재고">
+<meta name="theme-color" content="#5C1F2E">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=DM+Sans:wght@400;500;600&family=DM+Mono&display=swap" rel="stylesheet">
 
 <!-- ★ Firebase SDK -->
@@ -850,7 +857,8 @@ MC.addEventListener('click',e=>{
     e.preventDefault(); btn.blur();
     const k=btn.dataset.key;
     const dispName=btn.closest('.irow')?.querySelector('.nm')?.textContent||'';
-    openQtyModal(k, getQty(k), dispName);
+    const st=parseFloat(btn.step||0.1);
+    openQtyModal(k, getQty(k), dispName, st);
     return;
   }
   if(action==='photo'){
@@ -1297,11 +1305,13 @@ MC.addEventListener('contextmenu',e=>{
 ═══════════════════════════ */
 let _qmKey=null;
 
-function openQtyModal(k, qty, name){
+function openQtyModal(k, qty, name, step=0.1){
   _qmKey=k;
   document.getElementById('qtyModName').textContent=name||'';
   const inp=document.getElementById('qtyModInp');
   inp.value=fmtQty(qty);
+  inp.step=step;
+  inp.inputMode=step>=1?'numeric':'decimal';
   document.getElementById('qtyMod').classList.remove('off');
   setTimeout(()=>{ inp.focus(); inp.select(); },60);
 }
@@ -1321,11 +1331,15 @@ function confirmQtyModal(){
 
 document.getElementById('qtyModMinus').addEventListener('click',()=>{
   const inp=document.getElementById('qtyModInp');
-  inp.value=fmtQty(Math.max(0,Math.round(((parseFloat(inp.value)||0)-0.1)*10)/10));
+  const st=parseFloat(inp.step||0.1);
+  const prec=st>=1?1:10;
+  inp.value=fmtQty(Math.max(0,Math.round(((parseFloat(inp.value)||0)-st)*prec)/prec));
 });
 document.getElementById('qtyModPlus').addEventListener('click',()=>{
   const inp=document.getElementById('qtyModInp');
-  inp.value=fmtQty(Math.min(9999,Math.round(((parseFloat(inp.value)||0)+0.1)*10)/10));
+  const st=parseFloat(inp.step||0.1);
+  const prec=st>=1?1:10;
+  inp.value=fmtQty(Math.min(9999,Math.round(((parseFloat(inp.value)||0)+st)*prec)/prec));
 });
 document.getElementById('qtyModOk').addEventListener('click',confirmQtyModal);
 document.getElementById('qtyModInp').addEventListener('keydown',e=>{
