@@ -317,6 +317,7 @@ button,input{font-family:var(--fn)}
     <div id="catOptTitle" class="im-title"></div>
     <div class="im-sep"></div>
     <button class="im-btn" id="catOptToggleBundle"></button>
+    <button class="im-btn" id="catOptToggleInt"></button>
     <button class="im-btn im-del" id="catOptDel">🗑&nbsp; 카테고리 삭제</button>
     <button class="im-cancel" id="catOptCancel">취소</button>
   </div>
@@ -781,13 +782,23 @@ MC.addEventListener('click',e=>{
     if(!cc) return;
     const nm=getCatName(cc);
     const isBundle=!!(cc.bundleSize||cc.bundleSystem);
+    const isInt=!!(cc.intOnly);
     document.getElementById('catOptTitle').textContent=nm;
     document.getElementById('catOptToggleBundle').innerHTML=isBundle
       ?'🔢&nbsp; 숫자(개수)로 전환'
       :'📦&nbsp; 묶음/낱개로 전환';
     document.getElementById('catOptToggleBundle').onclick=()=>{
       if(isBundle){ delete cc.bundleSize; delete cc.bundleSystem; }
-      else { cc.bundleSize=50; }
+      else { cc.bundleSize=50; delete cc.intOnly; }
+      document.getElementById('catOptMenu').classList.add('off');
+      autoSave(); render();
+    };
+    document.getElementById('catOptToggleInt').innerHTML=isInt
+      ?'🔟&nbsp; 0.1단위로 전환'
+      :'1️⃣&nbsp; 1단위(정수)로 전환';
+    document.getElementById('catOptToggleInt').onclick=()=>{
+      if(isInt){ delete cc.intOnly; }
+      else { cc.intOnly=true; }
       document.getElementById('catOptMenu').classList.add('off');
       autoSave(); render();
     };
