@@ -1154,7 +1154,8 @@ async function doSave(){
 }
 
 // 내 기기 저장 여부 플래그 (Firebase 리스너가 내 저장에 반응 안 하도록)
-let _ownSaveTs = 0;
+let _ownSaveTs = 0;setTimeout(()=>{ if(isFirstLoad){ isFirstLoad=false; document.getElementById('spinOv').classList.add('off'); render(); } }, 8000);
+
 
 // 실시간 리스너 — 다른 기기에서 저장하면 자동 업데이트
 DB.on('value', snapshot=>{
